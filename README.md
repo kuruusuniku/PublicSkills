@@ -40,6 +40,28 @@ Slackモバイルは、小さいHTML/テキストファイルを添付すると*
 
 生成物は単一の `*.html` ファイルなので、Slackにドラッグ&ドロップするだけで共有できます。
 
+### 画像生成について(2経路)
+
+1MB超を稼ぐ画像は、環境に応じて2つの経路のどちらかで用意します。**どちらか一方があれば動きます。**
+
+| 経路 | 前提 | 生成されるもの |
+|---|---|---|
+| **2-A**(既定) | `run-ai-images` skillが入っている | AI生成のキービジュアル |
+| **2-B**(フォールバック) | Chrome/Chromiumが入っている | Claudeが書いたSVG図解をラスタライズしたPNG |
+
+`run-ai-images` が無い環境では自動的に2-Bに落ちます。同梱の `scripts/svg2png.sh` が
+Chromeヘッドレスで SVG → PNG 変換を行います(ImageMagickのSVG変換は日本語フォントで
+失敗しやすいため使いません)。
+
+```bash
+bash run-slack-html/scripts/svg2png.sh input.svg output.png --scale 2
+# => OK  /abs/path/output.png  1200x1200css @2x = 2400x2400px  704657 bytes (688KB, base64後 約918KB)
+```
+
+実測では 1200x1200 @2x の図解が PNG 430KB〜690KB(base64後 570KB〜920KB)なので、
+**図解1〜2枚で1MiB要件を満たせます**(このリポジトリでは、AI画像を一切使わず図解2枚だけで
+2.44MB・`verify.sh` ALL PASS になることを確認済み)。
+
 ### 使い方
 
 Claude Codeのセッション内で以下のように依頼してください:

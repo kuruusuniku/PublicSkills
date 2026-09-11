@@ -14,7 +14,9 @@ Slackモバイルアプリ(iOS/Android)でHTMLファイルを共有すると、�
 
 - **Input**: `args` = 作りたい記事・議事録・資料の内容(トピック文字列、渡された本文、または参照ファイルパス)
 - **Output**: `output/slack-html-{slug}/{basename}-slack-mobile.html` (単一ファイル、1.2MB以上)
-- **副産物**: 同ディレクトリに生成した画像原本(`images/`)を残す(再生成用。HTML内は埋め込み済みなので配布は`*-slack-mobile.html`単体でよい)
+- **副産物**: 同ディレクトリに生成した画像原本(`images/`。SVG経路の場合は元の`*.svg`も)を残す(再生成用。HTML内は埋め込み済みなので配布は`*-slack-mobile.html`単体でよい)
+- **前提**: 画像生成に`run-ai-images`を使う(Phase 2-A)。無い環境ではClaudeが書いたSVGを
+  Chromeヘッドレスでラスタライズする(Phase 2-B)ので、**どちらか一方があれば動く**
 
 ## 絶対要件(すべて検証必須 — Phase 4で機械的にチェックする)
 
@@ -46,13 +48,25 @@ Slackモバイルアプリ(iOS/Android)でHTMLファイルを共有すると、�
 
 ### Phase 2: キービジュアル生成
 
-内容に合った高品質な画像を1〜3枚生成する。`run-ai-images`と同じengineを直接叩く
-(詳細は`.claude/skills/run-ai-images/scripts/generate.sh`のコメント参照。本体は
-plugin cache配下にあることが多い — `find ~/.claude -iname generate.sh -path "*run-ai-images*"`
-で解決してから叩く)。
+内容に合った高品質な画像を1〜3枚用意する。経路は2つある:
+
+- **2-A(既定)**: `run-ai-images` でAI画像を生成する
+- **2-B(フォールバック)**: `run-ai-images` が無い環境で、**Claude自身がSVGを書き**、
+  それをラスタライズしてPNGにする
+
+まず2-Aが使えるか判定する。`GEN`が空なら2-Bへ進む。
 
 ```bash
 GEN=$(find ~/.claude -iname "generate.sh" -path "*run-ai-images*" 2>/dev/null | head -1)
+[ -n "$GEN" ] && echo "2-A: $GEN" || echo "2-B: run-ai-images 不在 → SVGフォールバック"
+```
+
+#### Phase 2-A: run-ai-images でAI画像を生成する
+
+上で解決した`$GEN`(`run-ai-images`と同じengine)を直接叩く。オプションの詳細は
+`generate.sh`冒頭のコメントを参照する。
+
+```bash
 bash "$GEN" -o "output/slack-html-{slug}/images/hero" --aspect 1:1 --format jpg --quality high -n 1 \
   -p "<内容に合った説明的なプロンプト。モバイル読者が縦スクロールで見る前提なので 1:1 か 3:2(縦寄り)を推奨、16:9のワイド画像は縦画面で小さく表示されがちなので避ける>"
 ```
@@ -64,6 +78,65 @@ bash "$GEN" -o "output/slack-html-{slug}/images/hero" --aspect 1:1 --format jpg 
 - 枚数とサイズは「内容に合っているか」を優先して決め、**水増し目的の無意味な画像は使わない**。
   1枚だけでは1MBに届かない場合は、本文の別セクションに合う2枚目・3枚目を足す
   (単純な高画質化より、内容と結びついた画像を増やす方を優先する)
+
+#### Phase 2-B: SVGフォールバック(run-ai-images が無い場合)
+
+AI画像生成が使えない環境では、**Claude自身がSVGで図解を書き**、それをPNGに
+ラスタライズして同じbase64経路に乗せる。写真的なキービジュアルは作れないが、
+このskillの用途(議事録・解説記事・資料)では**図解のほうが本文の理解に効く**ことが多く、
+実質的に上位互換になる場面すらある。
+
+**なぜインラインSVGのままではダメか**: `<svg>`をHTMLに直接書くとテキストなので
+数十KBにしかならず、1MiB要件を満たせない。さらに`verify.sh`のチェック4は
+`data:image/...;base64,`の存在を必須にしているため、インラインSVGだけだとFAILする。
+**ラスタライズしてdata URIにする**のが正しい経路。
+
+1. 内容に合った図解SVGを1〜3枚書く(本文の構造・比較・手順・ビフォーアフターなど)。
+   1枚あたり **1200x1200 前後**(縦画面前提。1:1 か 3:2 の縦寄り)を目安にする
+2. 同梱の`scripts/svg2png.sh`でラスタライズする
+
+```bash
+# 書いたSVGをファイルに保存してから変換する
+bash .claude/skills/run-slack-html/scripts/svg2png.sh \
+  "output/slack-html-{slug}/images/hero-01.svg" \
+  "output/slack-html-{slug}/images/hero-01.png" --scale 2
+# => OK  .../hero-01.png  1200x1200css @2x = 2400x2400px  704657 bytes (688KB, base64後 約918KB)
+```
+
+3. 出力の`base64後 約NNNKB`を足し上げ、**合計が1.1MiB相当を超える**まで図解を足す
+   (base64は元の約1.33倍になる。実測では1200x1200@2xの図解1枚が PNG 430KB〜690KB
+   → base64後 570KB〜920KB、要素の多い1200x1400@2xの図解で PNG 1.18MB → base64後 1.54MB。
+   **文字や図形の多い図解なら1〜2枚で1MiBを超える**ので、水増しの必要はまず無い)
+
+`svg2png.sh`の要点:
+
+- 描画は**Chromeヘッドレス**。ImageMagickのSVG変換は内部レンダラなので日本語フォントで
+  `unable to read font`で失敗しがちで、使えない(rsvg-convert入りの環境を除く)
+- `--scale 2`でRetina相当の2倍解像度。サイズが足りないときは`--scale 3`も可(上限10)
+- 失敗しても出力先を壊さない。撮影は一時ファイルに行い、PNG/JPEGとして妥当だと
+  確認できたときだけ最終パスへ`mv`する。したがって**「OK」が出たら必ず新しい画像ができている**
+  (古い画像が残ったまま成功と報告されることはない)
+- Chromeが固まる環境に備えて既定90秒で強制終了する。長時間かかるSVGでは
+  `CHROME_TIMEOUT=180`のように環境変数で延ばす
+- サイズはSVGの`width`/`height`属性、無ければ`viewBox`から自動判定。効かない場合は
+  `--width`/`--height`で明示
+- **PNGのまま使う**。図解のようなフラットな画像はJPEGにすると細い文字にリンギングが出て、
+  しかもサイズも小さくなる(=1MiBが遠のく)ので二重に損。グラデーション主体の
+  絵画的SVGのときだけ`--jpeg 92`を付ける
+- Chromeが別の場所にある環境では`CHROME=/path/to/chrome`を環境変数で渡す。
+  ブラウザを置けない環境(CIなど)では`brew install librsvg` / `apt install librsvg2-bin`で
+  `rsvg-convert -z 2 in.svg -o out.png`を使う(これを入れるとImageMagickのSVG変換も通るようになる)
+
+SVGを書くときの実務的な注意:
+
+- **フォントは指定しすぎない**。`font-family="Helvetica, sans-serif"`程度にとどめる。
+  環境に無いフォント名を書くと描画が代替フォントに落ちて崩れる。日本語は
+  `sans-serif`任せが最も安全(Chromeがヒラギノ/Noto等にフォールバックする)
+- テキストは`<text>`で書き、`<foreignObject>`は使わない(レンダラ差が出やすい)
+- 文字サイズは最終的に縦画面で読むことを考え、**1200px幅に対して28px以上**を目安にする
+- ラスタライズ後は必ず画像を開いて、文字切れ・はみ出し・重なりが無いか目視する
+  (SVGの`<text>`は自動改行しないので、長い日本語は自分で行分けする必要がある)
+- 元SVGは`images/`に残す(再生成・修正用)
 
 ### Phase 3: HTML組み立て
 
@@ -149,7 +222,9 @@ JavaScriptを無効化した状態でも同じ内容が見えることを確認�
 - **画像はJPEGで先に軽量化してから埋め込む**: PNG(特にAI生成のグラレコ風イラストは
   1枚2〜4MB になりがち)をそのままbase64化すると単体で16MB超級の巨大ファイルになり、
   Slackの添付上限にも引っかかりうる。`--format jpg --quality high`で生成するか、
-  生成後に`magick <in>.png -resize <適切な解像度> -quality 82 <out>.jpg`で変換する
+  生成後に`magick <in>.png -resize <適切な解像度> -quality 82 <out>.jpg`で変換する。
+  **ただしPhase 2-BのSVG由来の図解は逆**で、PNGのまま使う — フラットな図解はPNGでも
+  数百KB止まりで巨大化せず、JPEG化すると文字が潰れる上にサイズも減って1MiBが遠のく
 - **base64はファイル間コピーで組み立てる**: 会話内でbase64文字列をタイプ/貼り付けしない。
   Pythonスクリプトでファイルを読んでHTMLに書き込む(Phase 4のパターン)。これは
   誤りにくく、かつbase64破損(改行混入・エンコード崩れ)を防ぐ
