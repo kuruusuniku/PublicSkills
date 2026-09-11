@@ -47,12 +47,18 @@ Slackモバイルアプリ(iOS/Android)でHTMLファイルを共有すると、�
 ### Phase 2: キービジュアル生成
 
 内容に合った高品質な画像を1〜3枚生成する。`run-ai-images`と同じengineを直接叩く
-(詳細は`.claude/skills/run-ai-images/scripts/generate.sh`のコメント参照。本体は
-plugin cache配下にあることが多い — `find ~/.claude -iname generate.sh -path "*run-ai-images*"`
-で解決してから叩く)。
+(引数仕様は`~/.claude/skills/run-ai-images/scripts/generate.sh`の先頭コメント参照)。
+
+**engineの解決は`~/.claude/skills/`を最優先にすること。** 同名スクリプトが複数箇所に
+存在しうるが、`codex exec`の自動承認フラグは codex CLI のバージョンで変わる
+(0.154 で`--full-auto`が廃止され`--sandbox workspace-write`が後継)ため、
+バージョン差を吸収済みの手元のコピーを使う。`find ~/.claude`で一括検索すると
+ディレクトリ順次第で別のコピーを掴むので、必ず下記の順で解決する。
 
 ```bash
-GEN=$(find ~/.claude -iname "generate.sh" -path "*run-ai-images*" 2>/dev/null | head -1)
+GEN="$HOME/.claude/skills/run-ai-images/scripts/generate.sh"
+[ -f "$GEN" ] || GEN=$(find "$HOME/.claude/plugins" -iname "generate.sh" -path "*run-ai-images*" 2>/dev/null | head -1)
+[ -f "$GEN" ] || { echo "ERROR: run-ai-images engine が見つかりません" >&2; exit 1; }
 bash "$GEN" -o "output/slack-html-{slug}/images/hero" --aspect 1:1 --format jpg --quality high -n 1 \
   -p "<内容に合った説明的なプロンプト。モバイル読者が縦スクロールで見る前提なので 1:1 か 3:2(縦寄り)を推奨、16:9のワイド画像は縦画面で小さく表示されがちなので避ける>"
 ```
@@ -157,6 +163,11 @@ JavaScriptを無効化した状態でも同じ内容が見えることを確認�
   `<details>`の中に隠さない。折りたたみは補足情報だけに使う
 - **ダークモードは`prefers-color-scheme`のみ**: Slackモバイルのアプリ内ブラウザ/
   プレビューがOSのダークモード設定を反映する前提で作る。トグルUIやJSでの検出は不要
+- **画像が1枚も生成されないときは codex CLI のフラグを疑う**: `codex exec --full-auto`は
+  codex CLI 0.154 で廃止された(後継は`--sandbox workspace-write`)。古いフラグを渡すと
+  codex は usage を出して即終了するが、呼び出し側のスクリプトはこれを
+  「image_gen未保存 → 認証切れの可能性大」と誤報告しがち。`codex login status`が
+  正常なのに`result: 0/N succeeded`になったらこれを疑う
 - **元ファイルは絶対に上書きしない**: 既存の記事/資料HTMLを変換する依頼が来た場合、
   読み込みは元ファイルから、書き込みは必ず`{元のファイル名}-slack-mobile.html`の
   新規ファイルへ
