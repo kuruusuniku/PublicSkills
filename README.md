@@ -1,8 +1,34 @@
-# run-slack-html
+# PublicSkills
 
-Slackモバイルアプリで快適に閲覧できる、単一ファイルの自己完結HTML(記事・議事録・資料)を作るための [Claude Code](https://claude.com/claude-code) skill です。
+[Claude Code](https://claude.com/claude-code) の skill を公開しているリポジトリです。
 
-## 何を解決するか
+## 収録skill
+
+| skill | 概要 |
+|---|---|
+| [run-slack-html](run-slack-html/) | Slackモバイルアプリで快適に閲覧できる、単一ファイルの自己完結HTML(記事・議事録・資料)を作る |
+
+## インストール
+
+使いたいskillのフォルダを、Claude Codeのskillsディレクトリにコピーしてください。
+
+```bash
+git clone https://github.com/kuruusuniku/PublicSkills /tmp/PublicSkills
+
+# 個人用(全プロジェクト共通)
+cp -r /tmp/PublicSkills/run-slack-html ~/.claude/skills/
+
+# もしくは特定プロジェクトだけで使う場合
+cp -r /tmp/PublicSkills/run-slack-html <project>/.claude/skills/
+```
+
+---
+
+## run-slack-html
+
+Slackモバイルアプリで快適に閲覧できる、単一ファイルの自己完結HTML(記事・議事録・資料)を作るためのskillです。
+
+### 何を解決するか
 
 Slackモバイルは、小さいHTML/テキストファイルを添付すると**コードスニペットとして展開表示**してしまい、レイアウトが崩れて読みにくくなることがあります。このskillは:
 
@@ -14,20 +40,7 @@ Slackモバイルは、小さいHTML/テキストファイルを添付すると*
 
 生成物は単一の `*.html` ファイルなので、Slackにドラッグ&ドロップするだけで共有できます。
 
-## インストール
-
-このリポジトリの `run-slack-html/` フォルダを、Claude Codeのskillsディレクトリにコピーしてください。
-
-```bash
-# 個人用(全プロジェクト共通)
-git clone https://github.com/AI-Driven-R-D-Dept/run-slack-html /tmp/run-slack-html-skill
-cp -r /tmp/run-slack-html-skill/run-slack-html ~/.claude/skills/
-
-# もしくは特定プロジェクトだけで使う場合
-cp -r /tmp/run-slack-html-skill/run-slack-html <project>/.claude/skills/
-```
-
-## 使い方
+### 使い方
 
 Claude Codeのセッション内で以下のように依頼してください:
 
@@ -37,7 +50,7 @@ Claude Codeのセッション内で以下のように依頼してください:
 
 またはSKILL.mdの内容を直接読んだ上で、既存のClaude Codeセッションに「run-slack-html skillの手順で」と伝えても動作します。
 
-## 検証スクリプト
+### 検証スクリプト
 
 生成したHTMLが絶対要件(ファイルサイズ・JS非依存・base64整合性など)を満たしているか、
 同梱の `scripts/verify.sh` で機械的にチェックできます。
