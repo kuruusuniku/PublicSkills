@@ -44,32 +44,81 @@ Slackモバイルアプリ(iOS/Android)でHTMLファイルを共有すると、�
 リード文→本文→まとめの構成にする。**ここが本質的な執筆作業** — 後続フェーズは
 この内容を制約内に収める作業でしかない。
 
-### Phase 2: キービジュアル生成
+### Phase 2: 図版生成
 
-内容に合った高品質な画像を1〜3枚生成する。`run-ai-images`と同じengineを直接叩く
-(引数仕様は`~/.claude/skills/run-ai-images/scripts/generate.sh`の先頭コメント参照)。
+同梱の`scripts/make-images.sh`で図版を作る。**外部スキル・プラグインには依存しない**
+(このskillのディレクトリだけで完結する)。
 
-**engineの解決は`~/.claude/skills/`を最優先にすること。** 同名スクリプトが複数箇所に
-存在しうるが、`codex exec`の自動承認フラグは codex CLI のバージョンで変わる
-(0.154 で`--full-auto`が廃止され`--sandbox workspace-write`が後継)ため、
-バージョン差を吸収済みの手元のコピーを使う。`find ~/.claude`で一括検索すると
-ディレクトリ順次第で別のコピーを掴むので、必ず下記の順で解決する。
+まず本文の構成に合わせて図版の仕様を`spec.json`に書き、それを渡す。
 
 ```bash
-GEN="$HOME/.claude/skills/run-ai-images/scripts/generate.sh"
-[ -f "$GEN" ] || GEN=$(find "$HOME/.claude/plugins" -iname "generate.sh" -path "*run-ai-images*" 2>/dev/null | head -1)
-[ -f "$GEN" ] || { echo "ERROR: run-ai-images engine が見つかりません" >&2; exit 1; }
-bash "$GEN" -o "output/slack-html-{slug}/images/hero" --aspect 1:1 --format jpg --quality high -n 1 \
-  -p "<内容に合った説明的なプロンプト。モバイル読者が縦スクロールで見る前提なので 1:1 か 3:2(縦寄り)を推奨、16:9のワイド画像は縦画面で小さく表示されがちなので避ける>"
+SKILL_DIR="$HOME/.claude/skills/run-slack-html"
+OUT="output/slack-html-{slug}"
+
+cat > "$OUT/spec.json" <<'EOF'
+{
+  "palette": "amber-slate",
+  "figures": [
+    { "type": "hero", "title": "<記事タイトル>", "subtitle": "<副題>", "alt": "<図の説明>" },
+    { "type": "flow", "steps": ["<段階1>", "<段階2>", "<段階3>"], "alt": "<図の説明>" },
+    { "type": "compare",
+      "left":  { "label": "<左の見出し>", "items": ["<項目>", "<項目>"] },
+      "right": { "label": "<右の見出し>", "items": ["<項目>", "<項目>"] },
+      "alt": "<図の説明>" },
+    { "type": "checklist",
+      "items": [ {"text": "<項目>", "ok": true}, {"text": "<項目>", "ok": false} ],
+      "alt": "<図の説明>" },
+    { "type": "stat", "value": "<数値>", "label": "<意味>", "alt": "<図の説明>" }
+  ]
+}
+EOF
+
+bash "$SKILL_DIR/scripts/make-images.sh" --spec "$OUT/spec.json" --outdir "$OUT/images"
 ```
 
-- `--format jpg --quality high`で最初からJPEG生成する(PNGのままbase64化すると
-  1枚で数MBになり、後段のリサイズ変換の手間が増える。テキスト情報量の多い
-  グラレコ風・図解系イラストでもJPEG品質lowはやめてhighにする — 圧縮でラベル文字が
-  潰れると本文の代わりにならない)
-- 枚数とサイズは「内容に合っているか」を優先して決め、**水増し目的の無意味な画像は使わない**。
-  1枚だけでは1MBに届かない場合は、本文の別セクションに合う2枚目・3枚目を足す
-  (単純な高画質化より、内容と結びついた画像を増やす方を優先する)
+engineは自動で選ばれる:
+
+| 条件 | engine | 備考 |
+|---|---|---|
+| `codex` CLI があってログイン済み | codex | AI生成画像。1枚あたり40〜60秒 |
+| それ以外 | svg | 同梱のSVGエンジン。**ネットワーク不要**、Chromeがあれば動く |
+
+`--engine svg` / `--engine codex` で明示指定もできる(codexを明示して使えないときは
+黙ってsvgに落ちず、エラー終了する)。
+
+出力:
+
+- `$OUT/images/fig-01.jpg`, `fig-02.jpg`, ... (spec の figures 順)
+  - **拡張子を決め打ちしない。** ImageMagick(`magick`)が無い環境では`.png`で出力される。
+    実際のファイル名は必ず`manifest.json`の`file`から読む
+- `$OUT/images/manifest.json` — 呼び出し側が依存してよい形は下記
+
+```json
+{
+  "engine": "svg",
+  "figure_count": 5,
+  "total_bytes": 1145143,
+  "target_met": true,
+  "figures": [
+    { "index": 0, "file": "fig-01.jpg", "type": "hero",
+      "alt": "<spec の alt がそのまま入る>", "bytes": 247544, "format": "jpg" }
+  ]
+}
+```
+
+  `file` は `$OUT/images/` からの相対名。`target_met` が `false` なら図版を足して再実行する
+- 標準出力の最終行に `TOTAL_BYTES=<n> ENGINE=<svg|codex>`
+
+**`manifest.json`の`alt`をそのままHTMLの`alt`属性に使う。**
+これで「すべての`<img>`にalt」という絶対要件が機械的に担保される。
+
+- 合計バイトが1MiBに必要な量へ届かないと**警告が出る**。そのときは
+  **本文の別セクションに合う図版をspecに足して再実行**する。
+  無意味なパディングでサイズを稼ぐのは要件違反
+- 図版5枚でおおよそ1.1MB前後(base64化後で約1.5MB)になる。3枚だと届かないことがある
+- figureの型は hero / flow / compare / checklist / stat の5種。palette は
+  amber-slate / indigo-mist / teal-sand
+- **図版は本文の内容と結びつけること。** 意味のない飾り画像を並べてサイズを稼がない
 
 ### Phase 3: HTML組み立て
 
@@ -80,12 +129,15 @@ bash "$GEN" -o "output/slack-html-{slug}/images/hero" --aspect 1:1 --format jpg 
 - 本文は`<article>`または意味のある`<section>`群。見出しには`id`を振り、目次があれば
   `<a href="#id">`でジャンプできるようにする
 - 折りたたみが要る箇所(長い引用・補足・議事録の詳細メモなど)は`<details><summary>...</summary>...</details>`
-- 画像はこの段階では一旦ローカル相対パス(`images/hero-01.jpg`)で仮置きし、HTMLの
-  構造を完成させてから次のステップでbase64に差し替える(base64文字列を直接書きながら
-  タグ構造を編集すると事故りやすいため)
+- 画像はこの段階では一旦ローカル相対パスで仮置きし、HTMLの構造を完成させてから
+  次のステップでbase64に差し替える(base64文字列を直接書きながらタグ構造を編集すると
+  事故りやすいため)
+- **`src`も`alt`も`manifest.json`の値をそのまま使う**(手で書き直さない)。
+  `src`は`"images/" + file`、`alt`は`alt`をそのまま。これで拡張子の食い違いと
+  alt の書き漏れが同時に防げる
 
 ```html
-<img src="images/hero-01.jpg" alt="<内容を説明するalt>" loading="lazy">
+<img src="images/<manifest.json の file>" alt="<manifest.json の alt>" loading="lazy">
 ```
 
 ### Phase 4: base64埋め込み + サイズ検証
@@ -95,12 +147,13 @@ Pythonでの一括置換(base64文字列を会話に貼らずファイル間コ�
 ```bash
 cd output/slack-html-{slug}
 python3 - <<'EOF'
-import base64, pathlib
+import base64, json, pathlib
 
 html_path = "{basename}-slack-mobile.html"
 html = pathlib.Path(html_path).read_text(encoding="utf-8")
 
-for rel in ["images/hero-01.jpg"]:  # 実際に使った画像パスを列挙
+manifest = json.loads(pathlib.Path("images/manifest.json").read_text(encoding="utf-8"))
+for rel in ["images/" + f["file"] for f in manifest["figures"]]:
     b64 = base64.b64encode(pathlib.Path(rel).read_bytes()).decode("ascii")
     mime = "image/jpeg" if rel.lower().endswith((".jpg", ".jpeg")) else "image/png"
     old = f'src="{rel}"'
@@ -152,10 +205,10 @@ JavaScriptを無効化した状態でも同じ内容が見えることを確認�
 - **JSは「付加機能」のみ許可**: どうしても使うなら、例えば「目次のスムーズスクロール」
   のように**無くても全文が読める**ものに限る。初期表示・本文の可視性・画像表示に
   一切関与させない。迷ったらJS自体を書かない
-- **画像はJPEGで先に軽量化してから埋め込む**: PNG(特にAI生成のグラレコ風イラストは
-  1枚2〜4MB になりがち)をそのままbase64化すると単体で16MB超級の巨大ファイルになり、
-  Slackの添付上限にも引っかかりうる。`--format jpg --quality high`で生成するか、
-  生成後に`magick <in>.png -resize <適切な解像度> -quality 82 <out>.jpg`で変換する
+- **画像はJPEGで埋め込む**: `make-images.sh`は既定でJPEGを出し、合計バイトが
+  目標に届くまで解像度と品質を段階的に上げる。PNGのままbase64化すると1枚で
+  数MBになり、Slackの添付上限にも近づくので避ける(magickが無い環境では
+  PNGで出力され、その旨が`manifest.json`の`notes`に記録される)
 - **base64はファイル間コピーで組み立てる**: 会話内でbase64文字列をタイプ/貼り付けしない。
   Pythonスクリプトでファイルを読んでHTMLに書き込む(Phase 4のパターン)。これは
   誤りにくく、かつbase64破損(改行混入・エンコード崩れ)を防ぐ
@@ -163,7 +216,11 @@ JavaScriptを無効化した状態でも同じ内容が見えることを確認�
   `<details>`の中に隠さない。折りたたみは補足情報だけに使う
 - **ダークモードは`prefers-color-scheme`のみ**: Slackモバイルのアプリ内ブラウザ/
   プレビューがOSのダークモード設定を反映する前提で作る。トグルUIやJSでの検出は不要
-- **画像が1枚も生成されないときは codex CLI のフラグを疑う**: `codex exec --full-auto`は
+- **図版が作れないときはまず`--engine svg`を試す**: `make-images.sh`はcodexが使えれば
+  codexを選ぶが、codex側の不調で止まることがある。`--engine svg`なら
+  ネットワーク不要で必ず図版が出る(Chromeが要る)。なおcodexの
+  自動承認フラグは`make-images.sh`がCLIのバージョンを見て解決するので、
+  呼び出し側で気にする必要はない。参考: `codex exec --full-auto`は
   codex CLI 0.154 で廃止された(後継は`--sandbox workspace-write`)。古いフラグを渡すと
   codex は usage を出して即終了するが、呼び出し側のスクリプトはこれを
   「image_gen未保存 → 認証切れの可能性大」と誤報告しがち。`codex login status`が

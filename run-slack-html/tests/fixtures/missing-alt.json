@@ -1,0 +1,7 @@
+{
+  "figures": [
+    { "type": "hero", "title": "一枚目", "subtitle": "alt あり", "alt": "一枚目の図" },
+    { "type": "flow", "steps": ["a", "b"], "alt": "二枚目の図" },
+    { "type": "stat", "value": "42", "label": "alt が無い図版" }
+  ]
+}

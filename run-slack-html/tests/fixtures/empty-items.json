@@ -1,0 +1,8 @@
+{
+  "figures": [
+    { "type": "flow", "steps": [], "alt": "空のフロー図" },
+    { "type": "checklist", "items": [], "alt": "空のチェックリスト図" },
+    { "type": "compare", "left": { "label": "Before", "items": [] },
+                         "right": { "label": "After", "items": [] }, "alt": "空の比較図" }
+  ]
+}

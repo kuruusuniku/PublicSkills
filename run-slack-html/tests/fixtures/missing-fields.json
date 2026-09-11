@@ -1,0 +1,7 @@
+{
+  "figures": [
+    { "type": "flow", "alt": "steps が無いフロー図" },
+    { "type": "stat", "alt": "value も label も無い統計図" },
+    { "type": "compare", "alt": "left も right も無い比較図" }
+  ]
+}

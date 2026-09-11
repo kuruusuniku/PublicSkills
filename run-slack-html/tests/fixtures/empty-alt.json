@@ -1,0 +1,5 @@
+{
+  "figures": [
+    { "type": "hero", "title": "一枚目", "subtitle": "alt が空文字", "alt": "" }
+  ]
+}

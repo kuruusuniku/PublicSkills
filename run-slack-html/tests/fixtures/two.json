@@ -1,0 +1,7 @@
+{
+  "palette": "amber-slate",
+  "figures": [
+    { "type": "hero", "title": "二枚構成", "subtitle": "再現性の検証用", "alt": "タイトル図: 二枚構成" },
+    { "type": "flow", "steps": ["収集", "整形", "出力"], "alt": "フロー図: 収集 → 整形 → 出力" }
+  ]
+}

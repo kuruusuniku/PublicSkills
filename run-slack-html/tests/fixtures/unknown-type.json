@@ -1,0 +1,6 @@
+{
+  "figures": [
+    { "type": "hero", "title": "正常", "subtitle": "one", "alt": "正常な図" },
+    { "type": "pyramid", "title": "未知のタイプ", "alt": "未知のタイプの図" }
+  ]
+}

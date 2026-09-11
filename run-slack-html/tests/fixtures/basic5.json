@@ -1,0 +1,15 @@
+{
+  "palette": "amber-slate",
+  "figures": [
+    { "type": "hero", "title": "Slack で 1MiB 超", "subtitle": "コードスニペット展開を回避する", "alt": "タイトル図: Slack で 1MiB 超" },
+    { "type": "flow", "steps": ["メモ", "構成", "配布"], "alt": "フロー図: メモ → 構成 → 配布" },
+    { "type": "compare",
+      "left":  { "label": "Before", "items": ["private 依存", "再現不可"] },
+      "right": { "label": "After",  "items": ["自己完結", "公開可能"] },
+      "alt": "比較図: Before と After" },
+    { "type": "checklist",
+      "items": [ { "text": "alt 属性あり", "ok": true }, { "text": "JS 依存", "ok": false } ],
+      "alt": "チェックリスト図" },
+    { "type": "stat", "value": "1MB", "label": "HTML の最小サイズ", "alt": "統計図: 1MB" }
+  ]
+}

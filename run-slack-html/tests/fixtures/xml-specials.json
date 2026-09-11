@@ -1,0 +1,59 @@
+{
+  "palette": "amber-slate",
+  "figures": [
+    {
+      "type": "hero",
+      "title": "A&B <tag> \"quoted\" 'single' 日本語",
+      "subtitle": "R&D <beta> \"v2\" 'rc'",
+      "alt": "タイトル図: A&B <tag> \"quoted\" 'single' 日本語"
+    },
+    {
+      "type": "flow",
+      "steps": [
+        "a & b",
+        "<start>",
+        "\"end\"",
+        "'最後'"
+      ],
+      "alt": "フロー図: a & b → <start> → \"end\" → '最後'"
+    },
+    {
+      "type": "compare",
+      "left": {
+        "label": "Before & Old",
+        "items": [
+          "<x>",
+          "\"y\""
+        ]
+      },
+      "right": {
+        "label": "After > New",
+        "items": [
+          "'z'",
+          "a&b"
+        ]
+      },
+      "alt": "比較図: Before & Old / After > New"
+    },
+    {
+      "type": "checklist",
+      "items": [
+        {
+          "text": "エスケープ <&\"'>",
+          "ok": true
+        },
+        {
+          "text": "未エスケープ",
+          "ok": false
+        }
+      ],
+      "alt": "チェックリスト図: エスケープ <&\"'>"
+    },
+    {
+      "type": "stat",
+      "value": "<1MB",
+      "label": "size & limit",
+      "alt": "統計図: <1MB & limit"
+    }
+  ]
+}
