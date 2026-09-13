@@ -89,3 +89,4 @@ bash run-slack-html/scripts/verify.sh path/to/your-file-slack-mobile.html
 ## ライセンス
 
 社内共有目的で公開しています。ご自由にご利用・改変ください。
+販売など利益を取る場合は許諾が必要です
