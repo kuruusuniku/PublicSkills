@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>herdr タブ</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        padding: 8px 12px;
+        background: #2d2d2d;
+        color: #d8d8d8;
+        font: 12px/1.5 -apple-system, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 6px 0;
+      }
+      label {
+        width: 90px;
+        flex: none;
+        color: #b8b8b8;
+      }
+      input {
+        flex: 1;
+        min-width: 0;
+        background: #3d3d3d;
+        color: #fff;
+        border: 1px solid #555;
+        border-radius: 3px;
+        padding: 4px 6px;
+        font: inherit;
+      }
+      p {
+        margin: 8px 0;
+        color: #9a9a9a;
+      }
+      code {
+        color: #e0e0e0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <label for="slot">タブ番号</label>
+      <input id="slot" type="number" min="1" step="1" placeholder="自動 (ボタンの位置順)" />
+    </div>
+    <p>
+      空欄なら、このボタンの位置 (左上から右へ) の順に herdr のタブを割り当てます。番号を入れると、herdr
+      のサイドバーで上から数えたそのタブに固定します。
+    </p>
+    <p>短押し: そのタブへ移動 / 長押し: ずんだもんが今の様子を読み上げ</p>
+    <p>
+      herdr のパス・ローカル LLM・VOICEVOX の設定は <code>~/.config/herdr-deck/config.json</code> (Windows は
+      <code>%APPDATA%\herdr-deck\config.json</code>) に書きます。保存すると再起動なしで反映されます。
+    </p>
+    <script>
+      // Stream Deck のプロパティインスペクタ用 WebSocket プロトコル。外部ライブラリは使わない。
+      let socket = null;
+      let context = null;
+      let settings = {};
+      const slotInput = document.getElementById("slot");
+
+      function save() {
+        const n = Number.parseInt(slotInput.value, 10);
+        settings = { ...settings, slot: Number.isInteger(n) && n >= 1 ? n : null };
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ event: "setSettings", context, payload: settings }));
+        }
+      }
+
+      slotInput.addEventListener("change", save);
+
+      // Stream Deck が呼び出す
+      window.connectElgatoStreamDeckSocket = (port, uuid, registerEvent, _info, actionInfo) => {
+        context = uuid;
+        try {
+          settings = JSON.parse(actionInfo).payload.settings || {};
+        } catch {
+          settings = {};
+        }
+        if (settings.slot) slotInput.value = settings.slot;
+        socket = new WebSocket(`ws://127.0.0.1:${port}`);
+        socket.onopen = () => socket.send(JSON.stringify({ event: registerEvent, uuid }));
+        socket.onmessage = (msg) => {
+          const data = JSON.parse(msg.data);
+          if (data.event === "didReceiveSettings") {
+            settings = data.payload.settings || {};
+            slotInput.value = settings.slot || "";
+          }
+        };
+      };
+    </script>
+  </body>
+</html>

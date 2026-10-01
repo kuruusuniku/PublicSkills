@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# npm run build で生成されるもの
+com.kuruusuniku.herdr-deck.sdPlugin/bin/
+com.kuruusuniku.herdr-deck.sdPlugin/imgs/
+com.kuruusuniku.herdr-deck.sdPlugin/logs/

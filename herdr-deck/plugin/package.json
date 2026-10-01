@@ -1,0 +1,34 @@
+{
+  "name": "herdr-deck",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stream Deck で herdr の各タブを監視・操作し、完了/確認待ちをずんだもん(VOICEVOX)が読み上げる",
+  "type": "module",
+  "license": "SEE LICENSE IN ../../README.md",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "herdr-deck": "dist/herdr-deck.mjs"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "validate": "streamdeck validate com.kuruusuniku.herdr-deck.sdPlugin",
+    "link": "streamdeck link com.kuruusuniku.herdr-deck.sdPlugin",
+    "restart": "streamdeck restart com.kuruusuniku.herdr-deck",
+    "pack": "streamdeck pack com.kuruusuniku.herdr-deck.sdPlugin --output dist --force",
+    "check": "npm run typecheck && npm test && npm run build && npm run validate"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "3.0.1"
+  },
+  "devDependencies": {
+    "@elgato/cli": "1.10.1",
+    "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}
