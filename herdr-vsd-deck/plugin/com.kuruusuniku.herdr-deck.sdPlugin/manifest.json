@@ -1,0 +1,72 @@
+{
+  "Actions": [
+    {
+      "Icon": "static/agent.svg",
+      "Name": "herdr エージェント",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/agent.svg",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        }
+      ],
+      "Settings": {},
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "Tooltip": "herdr のエージェント1体の状態を表示します。押すとそのターミナルへ移動します。キーの位置順(左上から)に1体ずつ割り当てられます。",
+      "UUID": "com.kuruusuniku.herdr-deck.agent"
+    },
+    {
+      "Icon": "static/summary.svg",
+      "Name": "herdr サマリー",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/summary.svg",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        }
+      ],
+      "Settings": {},
+      "Controllers": [
+        "Keypad",
+        "Knob"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "Tooltip": "確認待ち・作業中・完了・待機の数を表示します。押すと一番急ぎのエージェントへ移動します。ノブでは回して選択、押して移動します。",
+      "UUID": "com.kuruusuniku.herdr-deck.summary"
+    }
+  ],
+  "SDKVersion": 1,
+  "Author": "kuruusuniku",
+  "Name": "herdr Deck",
+  "Icon": "static/icon.svg",
+  "CodePathMac": "plugin/index.js",
+  "CodePathWin": "plugin/index.js",
+  "Description": "herdr で動かしている Claude Code などのエージェントの状態をキーに表示し、押すとそのターミナルへジャンプします。",
+  "Category": "herdr Deck",
+  "CategoryIcon": "static/icon.svg",
+  "Version": "0.1.0",
+  "URL": "https://github.com/kuruusuniku/PublicSkills",
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.15"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Software": {
+    "MinimumVersion": "3.10.191.0421"
+  },
+  "Nodejs": {
+    "Version": "20"
+  }
+}

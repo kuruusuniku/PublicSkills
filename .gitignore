@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 output/
 .claude/
+herdr-vsd-deck/plugin/*/plugin/log/

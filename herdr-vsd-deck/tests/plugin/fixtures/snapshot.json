@@ -1,0 +1,32 @@
+{
+  "id": "cli:api:snapshot",
+  "result": {
+    "type": "session_snapshot",
+    "snapshot": {
+      "version": "0.9.3",
+      "protocol": 1,
+      "focused_workspace_id": "w1",
+      "focused_tab_id": "w1:t1",
+      "focused_pane_id": "w1:p1",
+      "workspaces": [
+        { "workspace_id": "w1", "number": 1, "label": "api", "focused": true, "pane_count": 2, "tab_count": 1, "active_tab_id": "w1:t1", "agent_status": "blocked" },
+        { "workspace_id": "w2", "number": 2, "label": "フロント", "focused": false, "pane_count": 1, "tab_count": 1, "active_tab_id": "w2:t1", "agent_status": "done" }
+      ],
+      "tabs": [
+        { "tab_id": "w1:t1", "workspace_id": "w1", "number": 1, "label": "main", "focused": true, "pane_count": 2, "agent_status": "blocked" },
+        { "tab_id": "w2:t1", "workspace_id": "w2", "number": 1, "label": "main", "focused": false, "pane_count": 1, "agent_status": "done" }
+      ],
+      "panes": [
+        { "pane_id": "w1:p1", "terminal_id": "term_a", "workspace_id": "w1", "tab_id": "w1:t1", "focused": true, "agent_status": "working", "revision": 3 },
+        { "pane_id": "w1:p2", "terminal_id": "term_b", "workspace_id": "w1", "tab_id": "w1:t1", "focused": false, "agent_status": "blocked", "revision": 5 },
+        { "pane_id": "w2:p1", "terminal_id": "term_c", "workspace_id": "w2", "tab_id": "w2:t1", "focused": false, "agent_status": "done", "revision": 9 }
+      ],
+      "layouts": [],
+      "agents": [
+        { "terminal_id": "term_c", "agent": "claude", "terminal_title": "✳ Update README", "terminal_title_stripped": "Update README", "agent_status": "done", "workspace_id": "w2", "tab_id": "w2:t1", "pane_id": "w2:p1", "focused": false, "state_change_seq": 4, "cwd": "/Users/me/src/web", "revision": 9 },
+        { "terminal_id": "term_a", "agent": "claude", "terminal_title": "⠋ Refactor auth", "terminal_title_stripped": "Refactor auth", "agent_status": "working", "workspace_id": "w1", "tab_id": "w1:t1", "pane_id": "w1:p1", "focused": true, "state_change_seq": 7, "cwd": "/Users/me/src/api", "revision": 3 },
+        { "terminal_id": "term_b", "name": "reviewer", "agent": "codex", "terminal_title_stripped": "Codex", "agent_status": "blocked", "workspace_id": "w1", "tab_id": "w1:t1", "pane_id": "w1:p2", "focused": false, "state_change_seq": 8, "cwd": "/Users/me/src/api", "revision": 5 }
+      ]
+    }
+  }
+}

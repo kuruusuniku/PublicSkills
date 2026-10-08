@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":"認証ミドルウェアをリファクタして"},"uuid":"u1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"認証ミドルウェアを確認します。"}]},"uuid":"a1"}
+not json at all
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"テストを実行して確認します。"},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"npm test -- auth","description":"Run auth tests"}}]},"uuid":"a2"}
+{"type":"system","subtype":"info","content":"metadata line"}
