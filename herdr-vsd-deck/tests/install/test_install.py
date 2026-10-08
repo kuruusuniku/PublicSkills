@@ -128,6 +128,60 @@ class InstallTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             install.plugins_dir(None, "Linux")
 
+    def test_plugins_dir_scans_other_vendor_folders(self):
+        support = self.home / "Library" / "Application Support"
+        vsd = support / "VSDinside" / "VSD Craft" / "plugins"
+        (vsd / "com.mirabox.streamdock.time.sdPlugin").mkdir(parents=True)
+        (support / "com.elgato.StreamDeck" / "Plugins" / "com.elgato.x.sdPlugin").mkdir(parents=True)
+        (support / "Other" / "plugins").mkdir(parents=True)  # sdPlugin が無いので対象外
+        with mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+            self.assertEqual(install.plugins_dir(None, "Darwin"), vsd)
+            (support / "HotSpot2" / "plugins" / "a.sdPlugin").mkdir(parents=True)
+            with self.assertRaises(SystemExit) as ctx:
+                install.plugins_dir(None, "Darwin")
+            self.assertIn("候補が複数", str(ctx.exception))
+
+    def fake_npm(self) -> Path:
+        bin_dir = self.home / "bin"
+        bin_dir.mkdir()
+        npm = bin_dir / "npm"
+        npm.write_text(
+            "#!/bin/sh\n"
+            f'echo "$@" >> "{self.home}/npm.log"\n'
+            'while [ "$1" != "--prefix" ]; do shift; done; mkdir -p "$2/node_modules/node-hid"\n',
+            encoding="utf-8",
+        )
+        npm.chmod(0o755)
+        self.env["PATH"] = f"{bin_dir}{os.pathsep}{self.env.get('PATH', '')}"
+        return npm
+
+    @unittest.skipIf(os.name == "nt", "fake npm is a shell script")
+    def test_with_led_installs_node_hid_and_keeps_it_on_reinstall(self):
+        self.fake_npm()
+        done = self.run_install("--with-led", "--skip-voice")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        modules = self.plugins / PLUGIN / "plugin" / "node_modules" / "node-hid"
+        self.assertTrue(modules.is_dir())
+        self.assertIn("node-hid@^3.4.0", (self.home / "npm.log").read_text(encoding="utf-8"))
+        config = json.loads((self.home / ".config" / "herdr-vsd-deck" / "config.json").read_text(encoding="utf-8"))
+        self.assertTrue(config["deck"]["ledRing"])
+        self.assertEqual(config["voice"]["speaker"], 3, "other settings are kept")
+
+        (self.home / "npm.log").unlink()
+        done = self.run_install("--skip-voice")  # 設定で有効なので入れ直しでも node-hid を確保する
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue(modules.is_dir())
+        self.assertTrue((self.home / "npm.log").exists())
+
+    def test_with_led_without_npm_explains(self):
+        self.env["PATH"] = str(self.home / "empty-bin")
+        done = subprocess.run(
+            [sys.executable, str(INSTALL), "--plugins-dir", str(self.plugins), "--with-led", "--skip-voice"],
+            env=self.env, capture_output=True, text=True, timeout=60, check=False,
+        )
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("npm が必要", done.stderr)
+
     def test_hook_command_quotes_paths(self):
         self.assertEqual(
             install.hook_command("C:\\Python312\\python.exe", Path("/Users/me/.claude/hooks/herdr-vsd-deck/zunda_notify.py")),

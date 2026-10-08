@@ -6,10 +6,12 @@
   },
   "deck": {
     "terminalApp": "",
+    "layout": "compact",
     "order": "sticky",
     "animate": true,
     "frameMs": 500,
-    "pollMs": 1000
+    "pollMs": 1000,
+    "ledRing": false
   },
   "voice": {
     "enabled": true,

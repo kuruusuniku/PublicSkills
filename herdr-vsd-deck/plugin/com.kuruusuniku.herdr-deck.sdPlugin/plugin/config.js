@@ -16,16 +16,23 @@ const DEFAULTS = Object.freeze({
   },
   deck: {
     terminalApp: '', // 空なら herdr クライアントを動かしているターミナルを自動検出
+    layout: 'compact', // compact: 64px キー (VSD M18 など) 向け / detailed: 大きいキー向けに文字を多く
     order: 'sticky', // sticky: 一度割り当てたキーを動かさない / priority: 確認待ち→完了→作業中→待機 の順
     animate: true,
     frameMs: 500,
     pollMs: 1000,
+    ledRing: false, // VSD M18 の RGB ライトを状態色にする (実験的。node-hid が必要)
   },
 });
 
 function configPath(env = process.env) {
   if (env.HERDR_VSD_DECK_CONFIG) return env.HERDR_VSD_DECK_CONFIG;
   return path.join(os.homedir(), '.config', 'herdr-vsd-deck', 'config.json');
+}
+
+// 読み上げのミュート状態。ファイルがあればミュート (プラグインのボタンとフックで共有)
+function mutePath(env = process.env) {
+  return path.join(path.dirname(configPath(env)), 'mute');
 }
 
 function merge(base, override) {
@@ -48,11 +55,13 @@ function clampNumber(value, min, max, fallback) {
 }
 
 function normalize(raw) {
-  const cfg = merge(DEFAULTS, raw);
+  const cfg = merge(structuredClone(DEFAULTS), raw); // 既定値オブジェクトを共有・変更しない
   cfg.deck.frameMs = clampNumber(cfg.deck.frameMs, 150, 5000, DEFAULTS.deck.frameMs);
   cfg.deck.pollMs = clampNumber(cfg.deck.pollMs, 300, 10000, DEFAULTS.deck.pollMs);
   if (!['sticky', 'priority'].includes(cfg.deck.order)) cfg.deck.order = DEFAULTS.deck.order;
+  if (!['compact', 'detailed'].includes(cfg.deck.layout)) cfg.deck.layout = DEFAULTS.deck.layout;
   cfg.deck.animate = cfg.deck.animate !== false;
+  cfg.deck.ledRing = cfg.deck.ledRing === true;
   for (const key of ['bin', 'session', 'socketPath']) cfg.herdr[key] = String(cfg.herdr[key] || '');
   cfg.deck.terminalApp = String(cfg.deck.terminalApp || '');
   return cfg;
@@ -91,4 +100,4 @@ class ConfigStore {
   }
 }
 
-module.exports = { DEFAULTS, ConfigStore, configPath, normalize };
+module.exports = { DEFAULTS, ConfigStore, configPath, mutePath, normalize };

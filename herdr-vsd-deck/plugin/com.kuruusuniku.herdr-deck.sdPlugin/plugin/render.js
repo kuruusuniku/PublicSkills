@@ -1,7 +1,11 @@
 'use strict';
 
-// キー画像 (144x144 SVG) を作る。VSD Craft の setImage は data:image/svg+xml を受け付けるので
-// Canvas 無しで描ける。使う要素は rect / text / circle だけに絞っている (SVG Tiny 相当)。
+// キー画像を SVG で作る。VSD Craft の setImage は data:image/svg+xml を受け付けるので
+// Canvas 無しで描ける。使う要素は rect / text / path だけに絞っている (SVG Tiny 相当)。
+//
+// レイアウトは2種類:
+//   compact  (既定): 64x64 ピクセルのキー (VSD M18 など) 向け。状態色で塗りつぶし、ドット絵は2倍、文字は1行
+//   detailed       : 大きいキー向け。状態名・経過時間・タスク名まで出す (144x144)
 
 const { frameFor, toRects } = require('./sprites');
 
@@ -132,4 +136,91 @@ function renderError(message, detail = '') {
   return toDataUri(frame(body, { bg: '#151b24', border: '#7f1d1d' }));
 }
 
-module.exports = { renderAgent, renderEmpty, renderSummary, renderError, fit, formatAge, agentLabels, STYLE, toDataUri };
+
+// ---------------------------------------------------------------- compact (64x64 キー)
+//
+// 座標は 64x64 で組み、実寸は 128x128 にする。VSD Craft が SVG を実寸で描いてから 64px に
+// 縮めても、ちょうど半分なのでドット絵の1マス (2単位) が 1x1 ピクセルの整数倍に収まる。
+
+const C = 64;
+const COMPACT_BG = {
+  blocked: ['#b45309', '#ea580c'], // 点滅
+  working: ['#1d4ed8'],
+  done: ['#15803d'],
+  idle: ['#334155'],
+  unknown: ['#1f2937'],
+};
+
+function compactFrame(body, bg) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${C * 2}" height="${C * 2}" viewBox="0 0 ${C} ${C}">`
+    + `<rect width="${C}" height="${C}" fill="${bg}"/>`
+    + body
+    + '</svg>';
+}
+
+function compactAgent(agent, { agents = [agent], since = null, now = Date.now(), tick = 0, animate = true } = {}) {
+  const colors = COMPACT_BG[agent.status] || COMPACT_BG.unknown;
+  const { main } = agentLabels(agent, agents);
+  const age = since == null ? '' : formatAge(now - since);
+  const body = (age ? text(62, 9, age, { size: 9, weight: 800, color: '#e2e8f0', anchor: 'end' }) : '')
+    + sprite(agent.status, animate ? tick : 0, { ox: 8, oy: 12, scale: 2 })
+    + text(32, 59, fit(main, 62, 12), { size: 12, weight: 800 });
+  return toDataUri(compactFrame(body, colors[tick % colors.length]));
+}
+
+function compactEmpty(index) {
+  return toDataUri(compactFrame(text(32, 38, `#${index + 1}`, { size: 14, weight: 800, color: '#475569' }), '#0b1018'));
+}
+
+// 2x2 のマスに 確認待ち/作業中/完了/待機 の数だけを大きく出す (文字を入れる余裕は無い)。
+function compactSummary(counts, { tick = 0 } = {}) {
+  const cells = [['blocked', 1, 1], ['working', 33, 1], ['done', 1, 33], ['idle', 33, 33]];
+  const body = cells.map(([status, x, y]) => {
+    const n = counts[status] + (status === 'idle' ? counts.unknown : 0);
+    const colors = COMPACT_BG[status];
+    const fill = n ? colors[tick % colors.length] : '#1e293b';
+    return `<rect x="${x}" y="${y}" width="30" height="30" rx="4" fill="${fill}"/>`
+      + text(x + 15, y + 22, n > 99 ? '99' : String(n), { size: 18, weight: 800, color: n ? '#ffffff' : '#475569' });
+  }).join('');
+  return toDataUri(compactFrame(body, '#0b1018'));
+}
+
+function compactError(message, detail = '', short = message) {
+  const body = sprite('idle', 0, { ox: 8, oy: 2, scale: 2 })
+    + text(32, 52, fit(short, 62, 11), { size: 11, weight: 800, color: '#fecaca' })
+    + text(32, 62, 'herdr', { size: 8, weight: 700, color: '#94a3b8' });
+  return toDataUri(compactFrame(body, '#3f1d1d'));
+}
+
+// ---------------------------------------------------------------- ボタン用アクション
+// どちらのレイアウトでも同じ絵 (64 座標) を使う。M18 の画面なしボタンに置いた場合は表示されないだけ。
+
+function renderNext(attention, { tick = 0 } = {}) {
+  const badge = attention
+    ? `<rect x="40" y="3" width="21" height="16" rx="8" fill="${tick % 2 ? '#ea580c' : '#b45309'}"/>`
+      + text(50.5, 15, attention > 9 ? '9+' : String(attention), { size: 11, weight: 800 })
+    : '';
+  const body = '<path d="M14 18 H32 V10 L50 28 L32 46 V38 H14 Z" fill="#e2e8f0"/>'
+    + badge
+    + text(32, 60, '次へ', { size: 12, weight: 800 });
+  return toDataUri(compactFrame(body, '#0f172a'));
+}
+
+function renderMute(muted) {
+  const speaker = '<path d="M12 22 H20 L30 13 V43 L20 34 H12 Z" fill="#e2e8f0"/>';
+  const icon = muted
+    ? '<path d="M37 21 L51 35 M51 21 L37 35" stroke="#fca5a5" stroke-width="4" stroke-linecap="round"/>'
+    : '<path d="M36 21 Q41 28 36 35 M42 16 Q50 28 42 40" fill="none" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round"/>';
+  const body = speaker + icon + text(32, 60, muted ? 'ミュート' : '読み上げ', { size: 11, weight: 800 });
+  return toDataUri(compactFrame(body, muted ? '#7f1d1d' : '#0f172a'));
+}
+
+const LAYOUTS = {
+  compact: { agent: compactAgent, empty: compactEmpty, summary: compactSummary, error: compactError },
+  detailed: { agent: renderAgent, empty: renderEmpty, summary: renderSummary, error: renderError },
+};
+
+module.exports = {
+  LAYOUTS, renderAgent, renderEmpty, renderSummary, renderError, compactAgent, compactEmpty, compactSummary, compactError,
+  renderNext, renderMute, fit, formatAge, agentLabels, STYLE, toDataUri,
+};

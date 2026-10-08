@@ -99,6 +99,11 @@ def config_path() -> Path:
     return Path.home() / ".config" / "herdr-vsd-deck" / "config.json"
 
 
+def mute_path() -> Path:
+    """このファイルがあればミュート。VSD Craft の「読み上げミュート」ボタンが作る/消す。"""
+    return config_path().parent / "mute"
+
+
 def merge(base: dict, override: object) -> dict:
     out = dict(base)
     if not isinstance(override, dict):
@@ -522,7 +527,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not isinstance(hook, dict):
         return 0
-    if not voice.get("enabled", True) or os.environ.get("HERDR_VSD_DECK_MUTE") == "1":
+    if not voice.get("enabled", True) or os.environ.get("HERDR_VSD_DECK_MUTE") == "1" or mute_path().exists():
         return 0
     kind = classify(hook)
     if not kind or not voice.get("events", {}).get(kind, False):

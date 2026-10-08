@@ -38,8 +38,48 @@
       ],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": false,
-      "Tooltip": "確認待ち・作業中・完了・待機の数を表示します。押すと一番急ぎのエージェントへ移動します。ノブでは回して選択、押して移動します。",
+      "Tooltip": "確認待ち・作業中・完了・待機の数を表示します。押すと一番急ぎのエージェントへ移動します。画面の無いボタン (VSD M18 の下の3つなど) に置くと「急ぎへジャンプ」ボタンになります。ノブでは回して選択、押して移動します。",
       "UUID": "com.kuruusuniku.herdr-deck.summary"
+    },
+    {
+      "Icon": "static/next.svg",
+      "Name": "herdr 次へ",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/next.svg",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        }
+      ],
+      "Settings": {},
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "Tooltip": "押すたびに 確認待ち→完了→作業中→待機 の順で次のエージェントへ移動します。画面の無いボタンにも置けます。",
+      "UUID": "com.kuruusuniku.herdr-deck.next"
+    },
+    {
+      "Icon": "static/mute.svg",
+      "Name": "読み上げミュート",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/mute.svg",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        }
+      ],
+      "Settings": {},
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "Tooltip": "ずんだもんの読み上げを止める/戻すを切り替えます。会議中などに。",
+      "UUID": "com.kuruusuniku.herdr-deck.mute"
     }
   ],
   "SDKVersion": 1,
@@ -51,7 +91,7 @@
   "Description": "herdr で動かしている Claude Code などのエージェントの状態をキーに表示し、押すとそのターミナルへジャンプします。",
   "Category": "herdr Deck",
   "CategoryIcon": "static/icon.svg",
-  "Version": "0.1.0",
+  "Version": "0.2.0",
   "URL": "https://github.com/kuruusuniku/PublicSkills",
   "OS": [
     {

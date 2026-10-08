@@ -100,6 +100,8 @@ bash run-slack-html/scripts/verify.sh path/to/your-file-slack-mobile.html
   色とドット絵の羊のアニメーションで 確認待ち(黄・点滅) / 作業中(青・走る) / 完了(緑・跳ねる) / 待機(灰・寝る) がひと目で分かる
 - **押すとジャンプ**: そのエージェントのペインへ herdr を切り替え、ターミナルを最前面へ (別デスクトップにあっても)
 - **サマリーキー**: 各状態の数を表示し、押すと一番急ぎ (確認待ち→完了→作業中) のエージェントへ。ノブに置けば回して選択
+- **VSD M18 (縦3×横5) 向け**: 64x64 ピクセルのキーでも読める表示が既定。画面なしの3ボタンには
+  「急ぎへ」「次へ」「読み上げミュート」を置ける。枠の RGB ライトを状態色にする実験的機能つき (`--with-led`)
 - **ずんだもんが読み上げ**: Claude Code の作業完了・許可待ち・質問を、ローカルLLM (Ollama など) が
   「どこで何が起きて、次に何をすればいいか」に要約し、VOICEVOX のずんだもんが読み上げる。
   LLM や VOICEVOX が無くても定型文 / OS の読み上げで動く
@@ -111,7 +113,8 @@ git clone https://github.com/kuruusuniku/PublicSkills /tmp/PublicSkills
 cp -r /tmp/PublicSkills/herdr-vsd-deck ~/.claude/skills/
 
 # Claude Code に「/herdr-vsd-deck でセットアップして」と頼むか、手で:
-python3 ~/.claude/skills/herdr-vsd-deck/install.py
+python3 ~/.claude/skills/herdr-vsd-deck/install.py --restart          # macOS: 配置後に VSD Craft を再起動
+python3 ~/.claude/skills/herdr-vsd-deck/install.py --restart --with-led  # M18 の RGB ライトも使う (npm が必要)
 ```
 
 インストーラが VSD Craft のプラグインフォルダへプラグインを置き、`~/.claude/settings.json` に読み上げフックを

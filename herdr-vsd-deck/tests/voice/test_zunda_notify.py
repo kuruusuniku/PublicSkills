@@ -275,6 +275,13 @@ class MainTest(VoiceTestCase):
         self.assertEqual(self.run_script(stop, "--dry-run", env={"HERDR_VSD_DECK_MUTE": "1"}).stdout, "")
         self.assertEqual(self.servers.requests, [])
 
+    def test_mute_file_from_the_deck_button_silences(self):
+        stop = {"hook_event_name": "Stop", "cwd": "/x/api", "last_assistant_message": "done"}
+        (self.config_file.parent / "mute").write_text("x", encoding="utf-8")
+        self.assertEqual(self.run_script(stop, "--dry-run").stdout, "")
+        (self.config_file.parent / "mute").unlink()
+        self.assertEqual(self.run_script(stop, "--dry-run").stdout.strip(), self.servers.llm_reply)
+
     def test_garbage_input_never_fails(self):
         done = subprocess.run([sys.executable, str(SCRIPT)], input="not json", capture_output=True, text=True, timeout=30, check=False)
         self.assertEqual(done.returncode, 0)

@@ -21,27 +21,55 @@ Claude Code ─画面検出→ herdr ← herdr api snapshot (1秒ごと) ─ her
 
 | 部品 | 場所 | 役割 |
 |---|---|---|
-| VSD Craft プラグイン | `plugin/com.kuruusuniku.herdr-deck.sdPlugin/` | 依存ゼロの Node。npm install 不要 |
+| VSD Craft プラグイン | `plugin/com.kuruusuniku.herdr-deck.sdPlugin/` | 依存ゼロの Node。npm install 不要 (M18 の RGB ライトを使う場合だけ node-hid) |
 | 読み上げフック | `voice/zunda_notify.py` | 標準ライブラリのみの Python |
 | インストーラ | `install.py` | プラグイン配置・フック登録・設定雛形 |
 | 設定 | `~/.config/herdr-vsd-deck/config.json` | プラグインとフックで共有。雛形は `config.example.json` |
 
 ### キーの見え方
 
-| 状態 (herdr) | 色 | ドット絵の羊 | 意味 |
+| 状態 (herdr) | キーの色 | ドット絵の羊 | 意味 |
 |---|---|---|---|
-| `blocked` 確認待ち | 黄 (枠が点滅) | 頭上の「!」が点滅 | 許可や質問への回答待ち |
+| `blocked` 確認待ち | オレンジ (点滅) | 頭上の「!」が点滅 | 許可や質問への回答待ち |
 | `working` 作業中 | 青 | 走っている | 作業中 |
 | `done` 完了 | 緑 | 跳ねてキラキラ | 終わったがまだ見ていない (押すと既読→待機) |
 | `idle` 待機 | 灰 | 寝ている | 何もしていない |
 
-- **herdr エージェント** アクション: 置いたキーの位置順 (左上から右へ、次の行へ) に1体ずつ割り当てる。
-  割り当ては固定 (sticky) で、エージェントが終了すると空き、次の新しいエージェントがそこに入る。
-  上段にワークスペース名 (同じワークスペースに複数いればタブ名付き)、下段にタスク名 (Claude Code の端末タイトル) と経過時間
-- **herdr サマリー** アクション: 確認待ち/作業中/完了/待機の数。押すと 確認待ち → 完了 → 作業中 の順で一番急ぎのエージェントへ。
-  ノブ付きデバイス (N4 など) のノブに置くと、回して選択・押してジャンプ (記事の Stream Deck Neo の情報バーに相当)
-- 押すと `herdr agent focus` で herdr 内のペインを切り替え、herdr クライアントを表示しているターミナル
-  (Ghostty / iTerm2 / WezTerm / Windows Terminal など) を最前面に出す。別デスクトップ (Space) にあっても切り替わる
+既定の表示 (`deck.layout: "compact"`) は **64x64 ピクセルのキー** (VSD M18 など) 向け。キー全体を状態色で塗り、
+羊を中央、ワークスペース名を下、経過時間を右上に出す。大きいキーのデバイスでは `"detailed"` にすると
+状態名とタスク名 (Claude Code の端末タイトル) も出る。
+
+| アクション | キーに置くと | 押すと |
+|---|---|---|
+| **herdr エージェント** | 置いたキーの位置順 (左上→右→次の行) に1体ずつ割り当てて表示。割り当ては固定 (sticky) で、終了したエージェントの場所は次の新顔が使う | そのエージェントへジャンプ |
+| **herdr サマリー** | 確認待ち/作業中/完了/待機の数 (2x2) | 確認待ち → 完了 → 作業中 の順で一番急ぎのエージェントへ。ノブに置くと回して選択・押してジャンプ |
+| **herdr 次へ** | 矢印と、確認待ち+完了の数 | 押すたびに急ぎ順で次のエージェントへ |
+| **読み上げミュート** | スピーカー (ミュート中は赤) | ずんだもんの読み上げを止める/戻す (会議中などに) |
+
+ジャンプは `herdr agent focus` で herdr 内のペインを切り替え、herdr クライアントを表示しているターミナル
+(Ghostty / iTerm2 / WezTerm / Terminal / Windows Terminal など) を最前面に出す。別デスクトップ (Space) にあっても切り替わる。
+
+### VSD M18 (縦3 x 横5 + 画面なしボタン3つ) のおすすめ配置
+
+```
+┌────┬────┬────┬────┬────┐
+│ A1 │ A2 │ A3 │ A4 │ A5 │   A = herdr エージェント (左上から順に割り当て)
+├────┼────┼────┼────┼────┤
+│ A6 │ A7 │ A8 │ A9 │A10 │
+├────┼────┼────┼────┼────┤
+│A11 │A12 │A13 │A14 │ Σ  │   Σ = herdr サマリー
+└────┴────┴────┴────┴────┘
+   [急ぎへ]  [次へ]  [ミュート]   画面なしボタン: herdr サマリー / herdr 次へ / 読み上げミュート
+```
+
+- M18 のキー画像は 64x64 ピクセル。既定の compact 表示はこれに合わせてある
+- 画面なしボタンは既定ではページ切り替えに使われている。複数ページを使っているなら1つはページ切り替えのまま残す
+  (サマリーや次へはボタンに置いても押せば動く。表示が出ないだけ)
+- **RGB ライト (実験的)**: `install.py --with-led` で、M18 の枠のライトを 確認待ち=オレンジで脈動 / 完了=緑 / 作業中=青 /
+  全員待機=消灯 にできる。プラグイン API には LED を操作する手段が無いので USB HID で直接送っている
+  (プロトコルは [streamdock-m18](https://github.com/bidoofgoo/streamdock-m18) の調査による)。
+  VSD Craft の RGB 効果 (色の自動切り替え) と取り合いになるので、VSD Craft 側のライト効果はオフにしておく。
+  うまく光らない・VSD Craft の画面が乱れるときは `deck.ledRing` を `false` に戻す
 
 ## 進め方
 
@@ -54,7 +82,7 @@ Claude Code ─画面検出→ herdr ← herdr api snapshot (1秒ごと) ─ her
 
 | 必要なもの | 確認 | 無い場合 |
 |---|---|---|
-| VSD Craft 3.10.191 以降 | アプリの「バージョン情報」 | 公式サイトから更新。古いと組み込み Node が無くプラグインが起動しない |
+| VSD Craft 3.10.191 以降 | アプリの「バージョン情報」 | 公式サイトから更新。古くて組み込み Node が無い場合は、Homebrew などの node (`brew install node`) があればそれで起動する |
 | herdr | `herdr --version` | `brew install herdr` / `curl -fsSL https://herdr.dev/install.sh \| sh` / Windows は `irm https://herdr.dev/install.ps1 \| iex` |
 | Python 3.9+ | `python3 --version` (Windows は `py -3 --version`) | 読み上げを使わないなら不要 |
 | VOICEVOX | `curl -s http://127.0.0.1:50021/version` | VOICEVOX を起動 (エンジンだけでも可)。無ければ OS の読み上げで代用 |
@@ -71,13 +99,15 @@ python3 <この skill のディレクトリ>/install.py
   見つからなければ VSD Craft の 設定 → 一般 →「アプリケーションフォルダを開く」(英語 UI では Open the application folder) で場所を確認し `--plugins-dir` で渡す
 - `~/.claude/settings.json` は書き換える前に `settings.json.bak-herdr-vsd-deck-<日時>` へバックアップされる。
   既存のフックは残し、このフックだけを `Stop` と `Notification` に `async: true` で追加する (再実行しても重複しない)
+- macOS では `--restart` を付けると、配置後に VSD Craft を終了して起動し直す
+- M18 の RGB ライトも使うなら `--with-led` (npm で `node-hid` をプラグインフォルダに入れ、`deck.ledRing` を `true` にする)
 - キー表示だけなら `--skip-voice`、読み上げだけなら `--skip-plugin`。外すときは `--uninstall`
 
 ### Phase 3: デバイスに置く
 
-1. VSD Craft を再起動 (終了して起動し直す)
-2. アクション一覧の **herdr Deck** から「herdr エージェント」を並べたいキーへ (例: 1段目すべて)、
-   「herdr サマリー」を1つ (ノブがあればノブにも) ドラッグ
+1. VSD Craft を再起動 (終了して起動し直す。`--restart` を付けた場合は不要)
+2. アクション一覧の **herdr Deck** から「herdr エージェント」を並べたいキーへ、「herdr サマリー」を1つドラッグ。
+   M18 なら上の「おすすめ配置」のとおりに、画面なしボタンへ サマリー / 次へ / 読み上げミュート
 3. herdr を起動し、その中のペインで Claude Code を動かす。状態は herdr が画面から検出する
    (`herdr integration install claude` を入れると herdr 再起動後のセッション復元もできる。表示には必須ではない)
 
@@ -103,11 +133,13 @@ herdr api snapshot | head -c 300          # プラグインが読むのと同じ
 |---|---|---|
 | `herdr.bin` | `""` | herdr のパス。空なら PATH と既定のインストール先を探す |
 | `herdr.session` | `""` | `herdr --session <名前>` で使っている場合の名前 |
+| `deck.layout` | `"compact"` | `compact`: 64px キー (M18 など) 向け / `detailed`: 大きいキー向けに状態名とタスク名も出す |
+| `deck.ledRing` | `false` | M18 の RGB ライトを状態色にする (実験的。`install.py --with-led` で有効化) |
 | `deck.terminalApp` | `""` | 前面に出すアプリ (macOS: `Ghostty` などアプリ名、Windows: `WindowsTerminal` などプロセス名)。空なら herdr クライアントの親プロセスから自動検出 |
 | `deck.order` | `"sticky"` | `priority` にすると毎回 確認待ち→完了→作業中→待機 の順に詰める |
 | `deck.animate` / `deck.frameMs` | `true` / `500` | アニメーションの有無とコマ送り間隔 (ms)。古いデバイスで重いなら `false` か大きめに |
 | `deck.pollMs` | `1000` | herdr を見に行く間隔 (ms) |
-| `voice.enabled` | `true` | 読み上げ全体のオンオフ (一時的には環境変数 `HERDR_VSD_DECK_MUTE=1`) |
+| `voice.enabled` | `true` | 読み上げ全体のオンオフ (一時的には「読み上げミュート」ボタン。`~/.config/herdr-vsd-deck/mute` ができる) |
 | `voice.events` | stop/permission/question: `true`, idle: `false` | どの出来事を読み上げるか |
 | `voice.speaker` | `3` | VOICEVOX の話者 ID。ずんだもん: ノーマル3 / あまあま1 / ツンツン7 / セクシー5 / ささやき22 / ヒソヒソ38 |
 | `voice.speedScale` | `1.15` | 話す速さ |
@@ -121,7 +153,9 @@ herdr api snapshot | head -c 300          # プラグインが読むのと同じ
 | 症状 | 原因と対処 |
 |---|---|
 | アクション一覧に herdr Deck が無い | VSD Craft を完全に終了して起動し直す。プラグインフォルダの場所が違う可能性 → `--plugins-dir` で再インストール |
-| キーが真っ黒・アイコンのまま | VSD Craft が古く組み込み Node が無い。3.10.191 以降へ更新。ログ (`plugin/log/plugin.log`) が作られているか確認 |
+| キーが真っ黒・アイコンのまま | VSD Craft が古く組み込み Node が無い。3.10.191 以降へ更新するか `brew install node`。ログ (`plugin/log/plugin.log`) が作られているか確認 |
+| 文字が潰れて読めない | `deck.layout` が `detailed` になっていないか。64px キーは `compact` |
+| RGB ライトが変わらない / ちらつく | VSD Craft のライト効果をオフに。ログに `LED:` の行が出ていれば原因が書いてある。だめなら `deck.ledRing: false` |
 | 「herdr が見つかりません」 | GUI アプリには shell の PATH が渡らない。`which herdr` の結果を `herdr.bin` に書く |
 | 「herdr 未接続」 | herdr が起動していない。名前付きセッションなら `herdr.session`、`XDG_CONFIG_HOME` を変えているなら `herdr.socketPath` (`<config>/herdr/herdr.sock`) を設定 |
 | 押しても herdr は切り替わるがターミナルが前に来ない | 自動検出に失敗。`deck.terminalApp` を指定。macOS は「システム設定 → デスクトップと Dock → アプリケーションの切り替えで…ウインドウがある操作スペースに移動」をオンに |

@@ -7,6 +7,8 @@
   3. 設定ファイル ~/.config/herdr-vsd-deck/config.json が無ければ雛形を作る (既存は上書きしない)
 
   python3 install.py                 # 全部入れる
+  python3 install.py --restart       # 入れたあと VSD Craft を再起動する (macOS)
+  python3 install.py --with-led      # VSD M18 の RGB ライトも状態色にする (実験的。npm で node-hid を入れる)
   python3 install.py --skip-voice    # キー表示だけ
   python3 install.py --skip-plugin   # 読み上げだけ
   python3 install.py --uninstall     # 取り除く (config.json は残す)
@@ -19,7 +21,9 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -29,6 +33,7 @@ PLUGIN_SRC = HERE / "plugin" / PLUGIN_NAME
 HOOK_SRC = HERE / "voice" / "zunda_notify.py"
 CONFIG_EXAMPLE = HERE / "config.example.json"
 HOOK_MARKER = "herdr-vsd-deck/zunda_notify.py"
+NODE_HID = "node-hid@^3.4.0"
 
 
 def home() -> Path:
@@ -46,6 +51,18 @@ def streamdock_dir(system: str | None = None) -> Path | None:
     return None
 
 
+def scan_plugin_dirs(root: Path) -> list[Path]:
+    """root の下 (2階層まで) で、*.sdPlugin を含む plugins フォルダを探す。Elgato の Stream Deck は除く。"""
+    found = []
+    for pattern in ("*/plugins", "*/Plugins", "*/*/plugins", "*/*/Plugins"):
+        for candidate in sorted(root.glob(pattern)):
+            if "elgato" in str(candidate).lower() or not candidate.is_dir():
+                continue
+            if any(child.suffix == ".sdPlugin" for child in candidate.iterdir()):
+                found.append(candidate)
+    return found
+
+
 def plugins_dir(override: str | None, system: str | None = None) -> Path:
     if override:
         return Path(override).expanduser()
@@ -57,6 +74,13 @@ def plugins_dir(override: str | None, system: str | None = None) -> Path:
             return base / name
     if base.is_dir():
         return base / "plugins"
+    # 既定の場所に無ければ、同じ親 (Application Support / AppData\Roaming) の下を探す
+    found = scan_plugin_dirs(base.parent.parent)
+    if len(found) == 1:
+        return found[0]
+    if found:
+        listing = "\n".join(f"  {f}" for f in found)
+        raise SystemExit(f"プラグインフォルダの候補が複数あります。--plugins-dir で指定してください:\n{listing}")
     raise SystemExit(
         f"VSD Craft のデータフォルダが見つかりません: {base}\n"
         "VSD Craft を一度起動してから再実行するか、VSD Craft の 設定 → 一般 →「アプリケーションフォルダを開く」で\n"
@@ -85,11 +109,65 @@ def hook_command(python: str, script: Path) -> str:
 
 def install_plugin(dest_root: Path) -> Path:
     dest = dest_root / PLUGIN_NAME
+    # --with-led で入れた node-hid は入れ直しても残す
+    kept = None
+    if (dest / "plugin" / "node_modules").is_dir():
+        kept = Path(tempfile.mkdtemp(prefix="herdr-deck-")) / "node_modules"
+        shutil.move(str(dest / "plugin" / "node_modules"), kept)
     if dest.exists():
         shutil.rmtree(dest)
     dest_root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(PLUGIN_SRC, dest, ignore=shutil.ignore_patterns("log", "*.log", "__pycache__"))
+    shutil.copytree(PLUGIN_SRC, dest, ignore=shutil.ignore_patterns("log", "*.log", "__pycache__", "node_modules"))
+    if kept:
+        shutil.move(str(kept), dest / "plugin" / "node_modules")
     return dest
+
+
+def install_node_hid(dest: Path) -> None:
+    npm = shutil.which("npm")
+    if not npm:
+        raise SystemExit("--with-led には npm が必要です (例: brew install node)。")
+    print(f"node-hid を入れています ({NODE_HID}) ...")
+    subprocess.run([npm, "install", "--prefix", str(dest / "plugin"), "--no-save", "--no-package-lock", "--no-audit", "--no-fund", NODE_HID], check=True)
+
+
+def update_config(path: Path, deck: dict) -> None:
+    data = load_settings(path) if path.exists() else {}
+    data.setdefault("deck", {}).update(deck)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def led_enabled(path: Path) -> bool:
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("deck", {}).get("ledRing") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def find_vsd_craft_app() -> Path | None:
+    for apps in (Path("/Applications"), home() / "Applications"):
+        for pattern in ("VSD*Craft*.app", "*StreamDock*.app", "*Stream Dock*.app"):
+            for app in sorted(apps.glob(pattern)):
+                return app
+    return None
+
+
+def restart_vsd_craft() -> None:
+    if platform.system() != "Darwin":
+        print("--restart は macOS のみです。VSD Craft を手で再起動してください。")
+        return
+    app = find_vsd_craft_app()
+    if not app:
+        print("/Applications に VSD Craft が見つかりません。手で再起動してください。")
+        return
+    name = app.stem
+    subprocess.run(["osascript", "-e", f'quit app "{name}"'], check=False, capture_output=True)
+    for _ in range(40):
+        if subprocess.run(["pgrep", "-f", f"{app}/Contents/MacOS/"], capture_output=True).returncode != 0:
+            break
+        time.sleep(0.25)
+    subprocess.run(["open", "-a", str(app)], check=False)
+    print(f"{name} を再起動しました")
 
 
 def strip_our_hooks(groups: list) -> list:
@@ -182,6 +260,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-plugin", action="store_true", help="VSD Craft プラグインを入れない")
     parser.add_argument("--skip-voice", action="store_true", help="ずんだもん読み上げフックを入れない")
     parser.add_argument("--uninstall", action="store_true", help="プラグインとフックを取り除く")
+    parser.add_argument("--with-led", action="store_true", help="VSD M18 の RGB ライトを状態色にする (実験的。npm で node-hid を入れる)")
+    parser.add_argument("--restart", action="store_true", help="インストール後に VSD Craft を再起動する (macOS)")
     parser.add_argument("--python", default=sys.executable, help="フックを実行する Python (既定: このインストーラを動かした Python)")
     args = parser.parse_args(argv)
 
@@ -207,6 +287,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.skip_plugin:
         dest = install_plugin(plugins_dir(args.plugins_dir))
         print(f"VSD Craft プラグインを配置しました: {dest}")
+        if args.with_led or led_enabled(cfg):
+            install_node_hid(dest)
+            if args.with_led:
+                update_config(cfg, {"ledRing": True})
+                print("config.json の deck.ledRing を true にしました (VSD Craft の RGB ライト効果はオフにしておくと競合しません)")
+        if args.restart:
+            restart_vsd_craft()
 
     if not args.skip_voice:
         hook, backup = install_voice(args.python)
@@ -219,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
         "\n次にやること:\n"
         "  1. VSD Craft を再起動し、アクション一覧の「herdr Deck」から\n"
         "     「herdr エージェント」を並べたいキーへ、「herdr サマリー」を1つ置く\n"
+        "     (VSD M18 なら 画面なしの3ボタンに「herdr サマリー」「herdr 次へ」「読み上げミュート」がおすすめ)\n"
         "  2. herdr を起動して、その中で Claude Code を動かす (状態は herdr が画面から検出します)\n"
     )
     if not args.skip_voice:

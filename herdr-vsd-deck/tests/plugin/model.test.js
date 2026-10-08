@@ -13,7 +13,7 @@ const { HerdrCli, buildAgents, mostUrgent, countByStatus, resolveHerdrBin } = re
 const { SlotBook, orderKeys } = require(path.join(PLUGIN, 'slots.js'));
 const { ConfigStore, normalize } = require(path.join(PLUGIN, 'config.js'));
 const { findAppBundle, windowsScript, encodePowerShell } = require(path.join(PLUGIN, 'focus.js'));
-const { renderAgent, renderSummary, renderError, fit, formatAge } = require(path.join(PLUGIN, 'render.js'));
+const { renderAgent, renderSummary, renderError, compactAgent, compactSummary, compactError, renderNext, renderMute, fit, formatAge } = require(path.join(PLUGIN, 'render.js'));
 const { frameFor, toRects, FRAMES } = require(path.join(PLUGIN, 'sprites.js'));
 
 const FIXTURES = path.join(__dirname, 'fixtures');
@@ -235,4 +235,29 @@ test('every sprite frame stays inside the grid', () => {
     }
     assert.notDeepEqual(frameFor(status, 0), frameFor(status, 1), `${status} animates`);
   }
+});
+
+test('compact keys are 64-unit SVGs rendered at 2x with integer sprite pixels', () => {
+  const agents = buildAgents(snapshot);
+  const svg = svgOf(compactAgent(agents[2], { agents, since: 0, now: 3 * 60000, tick: 0 }));
+  assert.match(svg, /^<svg [^>]*width="128" height="128" viewBox="0 0 64 64"/);
+  assert.match(svg, />3分</);
+  assert.match(svg, />フロント</);
+  for (const m of svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="2"/g)) {
+    assert.ok([m[1], m[2], m[3]].every((v) => Number.isInteger(Number(v))), `sprite rect on whole units: ${m[0]}`);
+  }
+  const blink = (tick) => compactAgent(agents[1], { agents, tick });
+  assert.notEqual(blink(0), blink(1), 'blocked keys blink');
+  assert.match(fit('とても長いワークスペース名', 62, 12), /^とても…$|^とても長…$/);
+});
+
+test('compact summary, error and button icons render', () => {
+  const summary = svgOf(compactSummary({ blocked: 0, working: 120, done: 3, idle: 1, unknown: 1 }));
+  assert.match(summary, />99</, 'large counts are capped to fit');
+  assert.match(summary, />2</, 'idle includes unknown');
+  assert.match(svgOf(compactError('herdr 未接続', 'x', '未接続')), />未接続</);
+  assert.match(svgOf(renderNext(12)), />9\+</);
+  assert.doesNotMatch(svgOf(renderNext(0)), /<rect x="40"/, 'no badge when nobody waits');
+  assert.match(svgOf(renderMute(true)), />ミュート</);
+  assert.match(svgOf(renderMute(false)), />読み上げ</);
 });
