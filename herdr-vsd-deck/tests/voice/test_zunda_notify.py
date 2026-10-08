@@ -33,12 +33,12 @@ FAKE_WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 28
 
 
 class FakeServers:
-    """VOICEVOX (/version, /audio_query, /synthesis) と LLM (/api/chat, /v1/chat/completions) を1つで真似る。"""
+    """VOICEVOX (/version, /audio_query, /synthesis) と LLM (/v1/chat/completions) を1つで真似る。"""
 
     def __init__(self):
         self.requests: list[tuple[str, dict, object]] = []
         self.llm_reply = "apiの認証まわりの修正が終わったのだ。テスト結果を確認してほしいのだ。"
-        self.reject_think = False
+        self.reject_reasoning = False
         self.llm_down = False
         servers = self
 
@@ -69,15 +69,13 @@ class FakeServers:
                     self.reply(200, json.dumps({"accent_phrases": [], "speedScale": 1.0, "volumeScale": 1.0, "kana": query.get("text")}).encode())
                 elif url.path == "/synthesis":
                     self.reply(200, FAKE_WAV, "audio/wav")
-                elif url.path == "/api/chat":
+                elif url.path == "/v1/chat/completions":
                     if servers.llm_down:
                         self.reply(500, b'{"error":"down"}')
-                    elif servers.reject_think and "think" in body:
-                        self.reply(400, b'{"error":"model does not support thinking"}')
+                    elif servers.reject_reasoning and "reasoning_effort" in body:
+                        self.reply(400, b'{"error":"unknown field reasoning_effort"}')
                     else:
-                        self.reply(200, json.dumps({"message": {"role": "assistant", "content": servers.llm_reply}}).encode())
-                elif url.path == "/v1/chat/completions":
-                    self.reply(200, json.dumps({"choices": [{"message": {"content": servers.llm_reply}}]}).encode())
+                        self.reply(200, json.dumps({"choices": [{"message": {"content": servers.llm_reply}}]}).encode())
                 else:
                     self.reply(404, b"{}")
 
@@ -111,7 +109,10 @@ class VoiceTestCase(unittest.TestCase):
         voice = {
             "voicevoxUrl": self.servers.url,
             "speedScale": 1.3,
-            "llm": {"provider": "ollama", "url": self.servers.url, "model": "test-model", "timeoutSec": 5},
+            "source": "hooks",
+            "llmUrl": f"{self.servers.url}/v1",
+            "llmModel": "test-model",
+            "llmTimeoutSec": 5,
         }
         voice.update(voice_overrides)
         self.config_file.write_text(json.dumps({"herdr": {"bin": str(FAKE_HERDR)}, "voice": voice}), encoding="utf-8")
@@ -167,7 +168,7 @@ class TextTest(unittest.TestCase):
 class PlaceTest(VoiceTestCase):
     def test_uses_herdr_workspace_label(self):
         os.environ["HERDR_WORKSPACE_ID"] = "w2"
-        self.assertEqual(zn.place_name({"cwd": "/Users/me/src/web"}, zn.load_config()), "フロント")
+        self.assertEqual(zn.place_name({"cwd": "/Users/me/src/web"}, zn.load_config()), "herdr-streamdeck")
 
     def test_falls_back_to_cwd_folder(self):
         self.assertEqual(zn.place_name({"cwd": "/Users/me/src/web/"}, zn.load_config()), "web")
@@ -179,18 +180,18 @@ class ComposeTest(VoiceTestCase):
     def test_llm_reply_is_used(self):
         voice = zn.load_config()["voice"]
         text = zn.compose("stop", "api", "認証ミドルウェアを直しました", voice)
-        self.assertEqual(text, self.servers.llm_reply)
+        self.assertEqual(text, f"apiから。{self.servers.llm_reply}")
         _, _, body = self.servers.requests[-1]
         self.assertEqual(body["model"], "test-model")
         self.assertFalse(body["stream"])
-        self.assertIn("場所: api", body["messages"][1]["content"])
+        self.assertEqual(body["reasoning_effort"], "none")
         self.assertIn("認証ミドルウェアを直しました", body["messages"][1]["content"])
 
-    def test_retries_without_think_for_old_ollama(self):
-        self.servers.reject_think = True
+    def test_retries_without_reasoning_effort_for_older_servers(self):
+        self.servers.reject_reasoning = True
         text = zn.compose("stop", "api", "done", zn.load_config()["voice"])
-        self.assertEqual(text, self.servers.llm_reply)
-        self.assertEqual(self.servers.paths().count("/api/chat"), 2)
+        self.assertEqual(text, f"apiから。{self.servers.llm_reply}")
+        self.assertEqual(self.servers.paths().count("/v1/chat/completions"), 2)
 
     def test_fallback_when_llm_down(self):
         self.servers.llm_down = True
@@ -201,13 +202,8 @@ class ComposeTest(VoiceTestCase):
         self.servers.llm_reply = "Task completed successfully."
         self.assertEqual(zn.compose("stop", "api", "", zn.load_config()["voice"]), "apiの作業が終わったのだ。結果を確認してほしいのだ。")
 
-    def test_openai_compatible_provider(self):
-        self.write_config(llm={"provider": "openai", "url": self.servers.url, "model": "local"})
-        self.assertEqual(zn.compose("stop", "api", "", zn.load_config()["voice"]), self.servers.llm_reply)
-        self.assertIn("/v1/chat/completions", self.servers.paths())
-
     def test_provider_none_uses_template_without_network(self):
-        self.write_config(llm={"provider": "none"})
+        self.write_config(llmModel="")
         self.assertEqual(zn.compose("question", "docs", "", zn.load_config()["voice"]), "docsから質問が来てるのだ。答えてあげてほしいのだ。")
         self.assertEqual(self.servers.requests, [])
 
@@ -254,8 +250,8 @@ class MainTest(VoiceTestCase):
         hook = {"hook_event_name": "Stop", "stop_hook_active": False, "cwd": "/x/api", "last_assistant_message": "直しました"}
         done = self.run_script(hook, "--dry-run", env={"HERDR_WORKSPACE_ID": "w1"})
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(done.stdout.strip(), self.servers.llm_reply)
-        self.assertIn("場所: api", self.servers.requests[-1][2]["messages"][1]["content"])
+        self.assertEqual(done.stdout.strip(), f"業務自動化から。{self.servers.llm_reply}", "herdr のスペース名を頭に付ける")
+        self.assertIn("直しました", self.servers.requests[-1][2]["messages"][1]["content"])
 
     def test_permission_hook_reads_pending_tool(self):
         hook = {
@@ -280,7 +276,13 @@ class MainTest(VoiceTestCase):
         (self.config_file.parent / "mute").write_text("x", encoding="utf-8")
         self.assertEqual(self.run_script(stop, "--dry-run").stdout, "")
         (self.config_file.parent / "mute").unlink()
-        self.assertEqual(self.run_script(stop, "--dry-run").stdout.strip(), self.servers.llm_reply)
+        self.assertEqual(self.run_script(stop, "--dry-run").stdout.strip(), f"apiから。{self.servers.llm_reply}")
+
+    def test_quiet_unless_hook_mode_is_chosen(self):
+        self.write_config(source="deck")
+        stop = {"hook_event_name": "Stop", "cwd": "/x/api", "last_assistant_message": "done"}
+        self.assertEqual(self.run_script(stop, "--dry-run").stdout, "", "the deck plugin is reading aloud, do not double up")
+        self.assertEqual(self.servers.requests, [])
 
     def test_garbage_input_never_fails(self):
         done = subprocess.run([sys.executable, str(SCRIPT)], input="not json", capture_output=True, text=True, timeout=30, check=False)

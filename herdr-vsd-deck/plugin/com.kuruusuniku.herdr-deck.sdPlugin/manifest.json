@@ -1,12 +1,12 @@
 {
   "Actions": [
     {
-      "Icon": "static/agent.svg",
-      "Name": "herdr エージェント",
+      "Icon": "static/space.svg",
+      "Name": "herdr スペース",
       "DisableAutomaticStates": true,
       "States": [
         {
-          "Image": "static/agent.svg",
+          "Image": "static/space.svg",
           "TitleAlignment": "bottom",
           "FontSize": "10"
         }
@@ -17,8 +17,30 @@
       ],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": false,
-      "Tooltip": "herdr のエージェント1体の状態を表示します。押すとそのターミナルへ移動します。キーの位置順(左上から)に1体ずつ割り当てられます。",
-      "UUID": "com.kuruusuniku.herdr-deck.agent"
+      "Tooltip": "herdr のスペースを表示します。押すとそのスペースを選び、下のタブのボタンがそのスペースのタブに切り替わります。選択中のスペースをもう一度押すと次のタブのページへ。住人の顔で、スペースに入らなくても確認待ちに気づけます。",
+      "UUID": "com.kuruusuniku.herdr-deck.space",
+      "PropertyInspectorPath": "propertyInspector/slot.html"
+    },
+    {
+      "Icon": "static/tab.svg",
+      "Name": "herdr タブ",
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "static/tab.svg",
+          "TitleAlignment": "bottom",
+          "FontSize": "10"
+        }
+      ],
+      "Settings": {},
+      "Controllers": [
+        "Keypad"
+      ],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "Tooltip": "選んだスペースのタブを表示します。住人のドット絵がエージェントの状態を演じます (作業中・確認待ち・完了・待機・空席)。押すとそのタブとターミナルへ移動します。",
+      "UUID": "com.kuruusuniku.herdr-deck.tab",
+      "PropertyInspectorPath": "propertyInspector/slot.html"
     },
     {
       "Icon": "static/summary.svg",
@@ -38,7 +60,7 @@
       ],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": false,
-      "Tooltip": "確認待ち・作業中・完了・待機の数を表示します。押すと一番急ぎのエージェントへ移動します。画面の無いボタン (VSD M18 の下の3つなど) に置くと「急ぎへジャンプ」ボタンになります。ノブでは回して選択、押して移動します。",
+      "Tooltip": "確認待ち・作業中・完了・待機の数を表示します。押すと一番急ぎのタブへ移動します。画面の無いボタン (VSD M18 の下の3つなど) に置けば「急ぎへジャンプ」ボタンになります。ノブでは回して選択、押して移動。",
       "UUID": "com.kuruusuniku.herdr-deck.summary"
     },
     {
@@ -58,7 +80,7 @@
       ],
       "UserTitleEnabled": false,
       "SupportedInMultiActions": false,
-      "Tooltip": "押すたびに 確認待ち→完了→作業中→待機 の順で次のエージェントへ移動します。画面の無いボタンにも置けます。",
+      "Tooltip": "押すたびに 確認待ち→完了→作業中→待機 の順で次のタブへ移動します。画面の無いボタンにも置けます。",
       "UUID": "com.kuruusuniku.herdr-deck.next"
     },
     {
@@ -88,10 +110,10 @@
   "Icon": "static/icon.svg",
   "CodePathMac": "plugin/index.js",
   "CodePathWin": "plugin/index.js",
-  "Description": "herdr で動かしている Claude Code などのエージェントの状態をキーに表示し、押すとそのターミナルへジャンプします。",
+  "Description": "herdr のスペースとタブをボタンに並べ、住人のドット絵でエージェントの状態を表示。押すとそのターミナルへジャンプし、作業が終わるとずんだもんが読み上げます。",
   "Category": "herdr Deck",
   "CategoryIcon": "static/icon.svg",
-  "Version": "0.2.0",
+  "Version": "0.3.0",
   "URL": "https://github.com/kuruusuniku/PublicSkills",
   "OS": [
     {

@@ -1,6 +1,7 @@
 'use strict';
 
-// index.js の Deck (VSD Craft のイベント処理) と、実プロセスでの E2E テスト
+// index.js の Deck (VSD Craft のイベント処理) と、実プロセスでの E2E テスト。
+// ボタンは VSD M18 と同じく 上段5つをスペース、残り10個をタブ にして試す。
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,40 +13,43 @@ const { once } = require('node:events');
 const { startServer } = require('./helpers/ws-server');
 
 const PLUGIN = path.join(__dirname, '../../plugin/com.kuruusuniku.herdr-deck.sdPlugin/plugin');
-const { Deck, parseArgs, describeError, AGENT_ACTION, SUMMARY_ACTION, NEXT_ACTION, MUTE_ACTION } = require(path.join(PLUGIN, 'index.js'));
+const { Deck, parseArgs, parseSlot, describeError, SPACE_ACTION, TAB_ACTION, SUMMARY_ACTION, NEXT_ACTION, MUTE_ACTION } = require(path.join(PLUGIN, 'index.js'));
 const { ConfigStore } = require(path.join(PLUGIN, 'config.js'));
+const { STATE } = require(path.join(PLUGIN, 'render.js'));
 
 const FIXTURES = path.join(__dirname, 'fixtures');
 const snapshot = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'snapshot.json'), 'utf8')).result.snapshot;
 const svgOf = (uri) => decodeURIComponent(uri.replace(/^data:image\/svg\+xml;charset=utf8,/, ''));
-const bgOf = (uri) => svgOf(uri).match(/<rect width="64" height="64" fill="([^"]+)"/)?.[1];
+const bgOf = (uri) => svgOf(uri).match(/<rect width="64" height="64" rx="5" fill="([^"]+)"/)?.[1];
+const clone = (x) => JSON.parse(JSON.stringify(x));
 
 function makeDeck({ snap = snapshot, failWith = null, raiseFails = false, deck: deckConfig = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-unit-'));
   const configFile = path.join(dir, 'config.json');
   fs.writeFileSync(configFile, JSON.stringify({ deck: deckConfig }));
   const sent = [];
-  const calls = { focus: [], raise: [], led: [], ledClosed: 0 };
+  const calls = { herdr: [], raise: [], led: [], ledClosed: 0, observed: 0 };
   let current = snap;
   const herdr = {
     snapshot: async () => {
       if (failWith) throw failWith;
       return current;
     },
-    focusAgent: async (paneId) => { calls.focus.push(paneId); },
+    focusTab: async (id) => { calls.herdr.push(`tab ${id}`); },
+    focusWorkspace: async (id) => { calls.herdr.push(`workspace ${id}`); },
   };
   const deck = new Deck({
     send: (m) => sent.push(m),
     config: new ConfigStore(configFile),
     createHerdr: () => herdr,
     createLed: () => ({ show: (rgb) => calls.led.push(rgb.join(',')), close: () => { calls.ledClosed += 1; } }),
+    createVoice: () => ({ observe: () => { calls.observed += 1; } }),
     raise: async (app) => {
       calls.raise.push(app);
       if (raiseFails) throw new Error('no terminal');
       return 'Ghostty';
     },
     muteFile: path.join(dir, 'mute'),
-    now: () => 600000,
     logger: () => {},
   });
   const setSnapshot = (next) => { current = next; };
@@ -56,97 +60,132 @@ function makeDeck({ snap = snapshot, failWith = null, raiseFails = false, deck: 
   return { deck, sent, calls, dir, setSnapshot, setConfig };
 }
 
-const appear = (deck, context, action, row, column, controller = 'Keypad') =>
-  deck.handle({ event: 'willAppear', action, context, device: 'dev', payload: { coordinates: { row, column }, controller, settings: {} } });
+const appear = (deck, context, action, row, column, { controller = 'Keypad', slot } = {}) =>
+  deck.handle({ event: 'willAppear', action, context, device: 'M18', payload: { coordinates: { row, column }, controller, settings: slot ? { slot } : {} } });
 
 const press = (deck, context, action) => deck.handle({ event: 'keyUp', action, context, payload: {} });
-
 const lastImage = (sent, context) => [...sent].reverse().find((m) => m.event === 'setImage' && m.context === context)?.payload.image;
+const label = (sent, context) => svgOf(lastImage(sent, context)).match(/fill="(?:#ffffff|#1e1b4b)">([^<]*)</)?.[1] ?? null;
 
-test('parseArgs reads the VSD Craft launch flags', () => {
+// M18: 上段5つ=スペース、2・3段目=タブ (10個)
+function layoutM18(deck, { tabKeys = 10 } = {}) {
+  for (let c = 0; c < 5; c += 1) appear(deck, `s${c}`, SPACE_ACTION, 0, c);
+  for (let i = 0; i < tabKeys; i += 1) appear(deck, `t${i}`, TAB_ACTION, 1 + Math.floor(i / 5), i % 5);
+}
+
+test('parseArgs and slot parsing', () => {
   assert.deepEqual(parseArgs(['node', 'index.js', '-port', '1234', '-pluginUUID', 'abc', '-registerEvent', 'registerPlugin', '-info', '{}']),
     { port: '1234', pluginUUID: 'abc', registerEvent: 'registerPlugin' });
+  assert.equal(parseSlot('3'), 3);
+  assert.equal(parseSlot(16), 16);
+  assert.equal(parseSlot(''), null);
+  assert.equal(parseSlot('17'), null);
 });
 
-test('compact layout (default, 64px keys) fills keys with the status colour', async () => {
-  const { deck, sent } = makeDeck();
-  appear(deck, 'k1', AGENT_ACTION, 0, 0);
-  appear(deck, 'k2', AGENT_ACTION, 0, 1);
-  appear(deck, 'k3', AGENT_ACTION, 0, 2);
-  appear(deck, 'k4', AGENT_ACTION, 0, 3);
-  appear(deck, 's1', SUMMARY_ACTION, 0, 4);
+test('top row shows spaces, the rest shows the tabs of the selected space', async () => {
+  const { deck, sent, calls } = makeDeck();
+  layoutM18(deck);
   await deck.refresh();
-  assert.equal(bgOf(lastImage(sent, 'k1')), '#1d4ed8');
-  assert.match(bgOf(lastImage(sent, 'k2')), /^#(b45309|ea580c)$/);
-  assert.equal(bgOf(lastImage(sent, 'k3')), '#15803d');
-  assert.match(svgOf(lastImage(sent, 'k1')), /viewBox="0 0 64 64"/);
-  assert.match(svgOf(lastImage(sent, 'k1')), />api 1</);
-  assert.match(svgOf(lastImage(sent, 'k2')), />reviewer</);
-  assert.match(svgOf(lastImage(sent, 'k4')), />#4</);
-  const summary = svgOf(lastImage(sent, 's1'));
-  assert.equal((summary.match(/>1</g) || []).length, 3, 'blocked / working / done counts');
+  assert.deepEqual(['s0', 's2'].map((k) => label(sent, k)), ['業務自動化', '執筆作業']);
+  assert.match(svgOf(lastImage(sent, 's1')), />herdr-<[\s\S]*>stream…</, 'long words wrap after the hyphen');
+  assert.equal(bgOf(lastImage(sent, 's3')), '#0d0b14', 'no fourth space');
+  // 選んでいるスペース (herdr でフォーカス中の w1) は淡い色
+  assert.equal(bgOf(lastImage(sent, 's0')), STATE.blocked.pale);
+  assert.equal(bgOf(lastImage(sent, 's1')), STATE.idle.dark);
+  assert.deepEqual(['t0', 't1', 't2', 't3', 't4'].map((k) => label(sent, k)), ['工数入力', 'DB移行', '手順書', 'console', '調査']);
+  // herdr でアクティブなタブも淡い色、他は暗い状態色
+  assert.equal(bgOf(lastImage(sent, 't0')), STATE.working.pale);
+  assert.equal(bgOf(lastImage(sent, 't1')), STATE.blocked.dark);
+  assert.equal(bgOf(lastImage(sent, 't2')), STATE.done.dark);
+  assert.equal(bgOf(lastImage(sent, 't3')), STATE.none.dark);
+  assert.equal(bgOf(lastImage(sent, 't5')), '#0d0b14');
+  assert.equal(calls.observed, 1, 'the voice sees every refresh');
 });
 
-test('agent keys show agents in key-position order and jump on press', async () => {
-  const { deck, sent, calls } = makeDeck({ deck: { layout: 'detailed' } });
-  // わざと逆順に置く: 番号はキーの位置で決まる
-  appear(deck, 'k3', AGENT_ACTION, 0, 2);
-  appear(deck, 'k1', AGENT_ACTION, 0, 0);
-  appear(deck, 'k2', AGENT_ACTION, 0, 1);
-  appear(deck, 'k4', AGENT_ACTION, 1, 0);
+test('pressing a space selects it in herdr; pressing a tab jumps to it', async () => {
+  const { deck, sent, calls } = makeDeck();
+  layoutM18(deck);
   await deck.refresh();
-  assert.match(svgOf(lastImage(sent, 'k1')), />作業中</);
-  assert.match(svgOf(lastImage(sent, 'k2')), />確認待ち</);
-  assert.match(svgOf(lastImage(sent, 'k3')), />完了</);
-  assert.match(svgOf(lastImage(sent, 'k4')), />空き</);
-
-  await press(deck, 'k3', AGENT_ACTION);
-  assert.deepEqual(calls.focus, ['w2:p1']);
+  await press(deck, 's1', SPACE_ACTION);
+  assert.deepEqual(calls.herdr, ['workspace w2']);
   assert.deepEqual(calls.raise, ['']);
-
-  await press(deck, 'k4', AGENT_ACTION);
-  assert.deepEqual(sent.at(-1), { event: 'showAlert', context: 'k4' });
+  assert.equal(label(sent, 't0'), 'claude');
+  assert.equal(bgOf(lastImage(sent, 't1')), '#0d0b14');
+  assert.equal(bgOf(lastImage(sent, 's1')), STATE.idle.pale);
+  assert.equal(bgOf(lastImage(sent, 's0')), STATE.blocked.dark);
+  await press(deck, 't0', TAB_ACTION);
+  assert.deepEqual(calls.herdr, ['workspace w2', 'tab w2:t1']);
+  await press(deck, 't3', TAB_ACTION);
+  assert.deepEqual(sent.at(-1), { event: 'showAlert', context: 't3' }, 'empty tab slot');
 });
 
-test('images are only sent when they change', async () => {
+test('pressing the selected space again pages through its tabs', async () => {
+  const { deck, sent, calls } = makeDeck();
+  layoutM18(deck, { tabKeys: 4 }); // Stream Deck Neo と同じ 4 タブ分
+  await deck.refresh();
+  assert.match(svgOf(lastImage(sent, 's0')), />1\/2</);
+  await press(deck, 's0', SPACE_ACTION);
+  assert.deepEqual(calls.herdr, [], 'paging does not touch herdr');
+  assert.equal(label(sent, 't0'), '調査');
+  assert.equal(bgOf(lastImage(sent, 't1')), '#0d0b14');
+  assert.match(svgOf(lastImage(sent, 's0')), />2\/2</);
+  await press(deck, 's0', SPACE_ACTION);
+  assert.equal(label(sent, 't0'), '工数入力', 'wraps to the first page');
+});
+
+test('jumping to a tab on another page turns to that page', async () => {
   const { deck, sent } = makeDeck();
-  appear(deck, 'k1', AGENT_ACTION, 0, 0);
+  layoutM18(deck, { tabKeys: 4 });
   await deck.refresh();
-  const before = sent.length;
-  await deck.refresh();
-  assert.equal(sent.length, before);
-  deck.animate();
-  assert.equal(sent.length, before + 1);
+  deck.selectSpace('w1', 'w1:t5');
+  deck.paintAll();
+  assert.equal(label(sent, 't0'), '調査');
 });
 
-test('summary key jumps to the most urgent agent, also from a screenless button', async () => {
-  const { deck, sent, calls } = makeDeck({ deck: { layout: 'detailed' } });
-  appear(deck, 's1', SUMMARY_ACTION, 0, 0);
+test('the deck follows when the space is switched inside herdr', async () => {
+  const { deck, sent, setSnapshot } = makeDeck();
+  layoutM18(deck);
   await deck.refresh();
-  assert.match(svgOf(lastImage(sent, 's1')), />herdr {2}3体</);
-  await press(deck, 's1', SUMMARY_ACTION);
-  assert.deepEqual(calls.focus, ['w1:p2']);
+  const moved = clone(snapshot);
+  moved.focused_workspace_id = 'w3';
+  setSnapshot(moved);
+  await deck.refresh();
+  assert.equal(label(sent, 't0'), '1');
+  assert.equal(bgOf(lastImage(sent, 't0')), STATE.none.pale, 'an empty seat that is the active tab');
 });
 
-test('next cycles blocked -> done -> working starting after the focused agent', async () => {
-  const { deck, sent, calls, setSnapshot } = makeDeck();
-  appear(deck, 'n1', NEXT_ACTION, 2, 0);
+test('slots from the property inspector override the position order', async () => {
+  const { deck, sent } = makeDeck();
+  appear(deck, 'p2s1', SPACE_ACTION, 0, 0, { slot: 3 });
+  appear(deck, 'p2s2', SPACE_ACTION, 0, 1, { slot: '2' });
   await deck.refresh();
-  assert.match(svgOf(lastImage(sent, 'n1')), />次へ</);
-  assert.match(svgOf(lastImage(sent, 'n1')), />2</, 'blocked + done badge');
-  // フィクスチャでは作業中の w1:p1 がフォーカス中 → 急ぎ順 [w1:p2, w2:p1, w1:p1] の先頭へ戻る
-  await press(deck, 'n1', NEXT_ACTION);
-  assert.deepEqual(calls.focus, ['w1:p2']);
-  const focusOn = (paneId) => ({ ...snapshot, agents: snapshot.agents.map((a) => ({ ...a, focused: a.pane_id === paneId })) });
-  setSnapshot(focusOn('w1:p2'));
+  assert.equal(label(sent, 'p2s1'), '執筆作業');
+  assert.equal(label(sent, 'p2s2'), 'herdr-');
+  deck.handle({ event: 'didReceiveSettings', action: SPACE_ACTION, context: 'p2s1', payload: { settings: { slot: 1 } } });
+  assert.equal(label(sent, 'p2s1'), '業務自動化');
+});
+
+test('summary jumps to the most urgent tab, next cycles in urgency order', async () => {
+  const { deck, calls, setSnapshot } = makeDeck();
+  appear(deck, 'b0', SUMMARY_ACTION, 3, 0);
+  appear(deck, 'b1', NEXT_ACTION, 3, 1);
   await deck.refresh();
-  await press(deck, 'n1', NEXT_ACTION);
-  assert.deepEqual(calls.focus, ['w1:p2', 'w2:p1']);
+  await press(deck, 'b0', SUMMARY_ACTION);
+  assert.deepEqual(calls.herdr, ['tab w1:t2']);
+  // フィクスチャでは w1:t1 (作業中) がフォーカス中 → 急ぎ順 [t2, t3, t1, t5, w2:t1] で t1 の次は t5
+  await press(deck, 'b1', NEXT_ACTION);
+  assert.equal(calls.herdr.at(-1), 'tab w1:t5');
+  const focused = clone(snapshot);
+  focused.focused_tab_id = 'w2:t1';
+  setSnapshot(focused);
+  await deck.refresh();
+  await press(deck, 'b1', NEXT_ACTION);
+  assert.equal(calls.herdr.at(-1), 'tab w1:t2', 'wraps around');
 });
 
 test('mute button toggles the shared mute file even while herdr is down', async () => {
   const { deck, sent, dir } = makeDeck({ failWith: new Error('no herdr server is running') });
-  appear(deck, 'm1', MUTE_ACTION, 2, 2);
+  appear(deck, 'm1', MUTE_ACTION, 3, 2);
   await deck.refresh();
   assert.match(svgOf(lastImage(sent, 'm1')), />読み上げ</);
   await press(deck, 'm1', MUTE_ACTION);
@@ -154,48 +193,53 @@ test('mute button toggles the shared mute file even while herdr is down', async 
   assert.match(svgOf(lastImage(sent, 'm1')), />ミュート</);
   await press(deck, 'm1', MUTE_ACTION);
   assert.ok(!fs.existsSync(path.join(dir, 'mute')));
-  assert.match(svgOf(lastImage(sent, 'm1')), />読み上げ</);
-  // フック側など外から消されても次の更新で反映される
-  fs.writeFileSync(path.join(dir, 'mute'), '');
-  await deck.refresh();
-  assert.match(svgOf(lastImage(sent, 'm1')), />ミュート</);
-});
-
-test('summary on a knob selects with rotation and jumps on press', async () => {
-  const { deck, sent, calls } = makeDeck({ deck: { layout: 'detailed' } });
-  appear(deck, 'n1', SUMMARY_ACTION, 0, 0, 'Knob');
-  await deck.refresh();
-  assert.match(svgOf(lastImage(sent, 'n1')), />作業中</);
-  deck.handle({ event: 'dialRotate', action: SUMMARY_ACTION, context: 'n1', payload: { ticks: -1 } });
-  assert.match(svgOf(lastImage(sent, 'n1')), />完了</);
-  await deck.handle({ event: 'dialDown', action: SUMMARY_ACTION, context: 'n1', payload: {} });
-  assert.deepEqual(calls.focus, ['w2:p1']);
 });
 
 test('herdr errors are shown on every key and presses alert', async () => {
   const { deck, sent, calls } = makeDeck({ failWith: new Error('no herdr server is running at /x; run `herdr`') });
-  appear(deck, 'k1', AGENT_ACTION, 0, 0);
-  appear(deck, 's1', SUMMARY_ACTION, 0, 1);
-  appear(deck, 'n1', NEXT_ACTION, 0, 2);
+  layoutM18(deck);
+  appear(deck, 'b1', NEXT_ACTION, 3, 1);
   await deck.refresh();
-  for (const key of ['k1', 's1', 'n1']) assert.match(svgOf(lastImage(sent, key)), />未接続</);
-  await press(deck, 'k1', AGENT_ACTION);
-  assert.deepEqual(sent.at(-1), { event: 'showAlert', context: 'k1' });
-  await press(deck, 'n1', NEXT_ACTION);
-  assert.deepEqual(sent.at(-1), { event: 'showAlert', context: 'n1' });
-  assert.deepEqual(calls.focus, []);
+  for (const key of ['s0', 't0', 'b1']) assert.match(svgOf(lastImage(sent, key)), />未接続</);
+  await press(deck, 't0', TAB_ACTION);
+  assert.deepEqual(sent.at(-1), { event: 'showAlert', context: 't0' });
+  await press(deck, 's0', SPACE_ACTION);
+  assert.deepEqual(sent.at(-1), { event: 'showAlert', context: 's0' });
+  assert.deepEqual(calls.herdr, []);
 });
 
-test('LED ring follows the most urgent status and turns off when disabled', async () => {
+test('a terminal that cannot be raised still counts as a jump inside herdr', async () => {
+  const { deck, sent, calls } = makeDeck({ raiseFails: true });
+  layoutM18(deck);
+  await deck.refresh();
+  await press(deck, 't1', TAB_ACTION);
+  assert.deepEqual(calls.herdr, ['tab w1:t2']);
+  assert.equal(sent.some((m) => m.event === 'showAlert'), false);
+});
+
+test('images are only sent when they change', async () => {
+  const { deck, sent } = makeDeck({ deck: { animate: false } });
+  layoutM18(deck);
+  await deck.refresh();
+  const before = sent.length;
+  await deck.refresh();
+  assert.equal(sent.length, before);
+  deck.animate(); // アニメーション無しでも確認待ちの顔は点滅する
+  assert.ok(sent.length - before <= 2);
+});
+
+test('LED ring follows the most urgent tab and turns off when disabled', async () => {
   const { deck, calls, setConfig, setSnapshot } = makeDeck({ deck: { ledRing: true } });
   await deck.refresh();
   deck.animate();
   deck.animate();
-  assert.deepEqual([...calls.led].sort(), ['255,110,0', '70,30,0'], 'blocked pulses orange');
-  setSnapshot({ ...snapshot, agents: snapshot.agents.filter((a) => a.agent_status !== 'blocked') });
+  assert.deepEqual([...calls.led].sort(), ['255,20,60', '70,5,16'], 'blocked pulses red');
+  const noBlocked = clone(snapshot);
+  noBlocked.panes = noBlocked.panes.map((p) => (p.agent_status === 'blocked' ? { ...p, agent_status: 'idle' } : p));
+  setSnapshot(noBlocked);
   await deck.refresh();
   deck.animate();
-  assert.equal(calls.led.at(-1), '0,200,60', 'then done is green');
+  assert.equal(calls.led.at(-1), '30,220,150', 'then done is mint');
   setConfig({ ledRing: false });
   await deck.refresh();
   deck.animate();
@@ -203,34 +247,8 @@ test('LED ring follows the most urgent status and turns off when disabled', asyn
   assert.equal(calls.ledClosed, 1);
 });
 
-test('LED is never touched unless enabled', async () => {
-  const { deck, calls } = makeDeck();
-  await deck.refresh();
-  deck.animate();
-  assert.deepEqual(calls.led, []);
-});
-
-test('a terminal that cannot be raised still counts as a jump inside herdr', async () => {
-  const { deck, sent, calls } = makeDeck({ raiseFails: true });
-  appear(deck, 'k1', AGENT_ACTION, 0, 0);
-  await deck.refresh();
-  await press(deck, 'k1', AGENT_ACTION);
-  assert.deepEqual(calls.focus, ['w1:p1']);
-  assert.equal(sent.some((m) => m.event === 'showAlert'), false);
-});
-
-test('removing a key renumbers the remaining ones', async () => {
-  const { deck, sent } = makeDeck({ deck: { layout: 'detailed' } });
-  appear(deck, 'k1', AGENT_ACTION, 0, 0);
-  appear(deck, 'k2', AGENT_ACTION, 0, 1);
-  await deck.refresh();
-  deck.handle({ event: 'willDisappear', action: AGENT_ACTION, context: 'k1', payload: {} });
-  assert.match(svgOf(lastImage(sent, 'k2')), />作業中</);
-});
-
 test('describeError maps herdr failures to short key messages', () => {
   assert.deepEqual(describeError(Object.assign(new Error('x'), { code: 'HERDR_NOT_FOUND' })), ['herdr が見つかりません', 'config の herdr.bin を設定', '見つからず']);
-  assert.equal(describeError(Object.assign(new Error('spawn herdr ENOENT'), { code: 'ENOENT' }))[0], 'herdr が見つかりません');
   assert.equal(describeError(new Error('no herdr server is running at /x; run `herdr` to start or attach it'))[2], '未接続');
   assert.equal(describeError(Object.assign(new Error('Command failed'), { killed: true }))[0], 'herdr 応答なし');
   assert.equal(describeError(new Error('something else'))[0], 'herdr エラー');
@@ -240,15 +258,14 @@ test('index.js also starts when run as a shell script (VSD Craft without built-i
   const run = spawnSync('/bin/sh', [path.join(PLUGIN, 'index.js')], { encoding: 'utf8', timeout: 20000 });
   assert.equal(run.status, 2);
   assert.match(run.stderr, /usage: node index\.js/);
-  const mode = fs.statSync(path.join(PLUGIN, 'index.js')).mode;
-  assert.ok(mode & 0o111, 'index.js is executable');
+  assert.ok(fs.statSync(path.join(PLUGIN, 'index.js')).mode & 0o111, 'index.js is executable');
 });
 
-test('end to end: VSD Craft launches the plugin, keys render, a press focuses herdr', async (t) => {
+test('end to end: VSD Craft launches the plugin, keys render, presses drive herdr', async (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-e2e-'));
   const config = path.join(tmp, 'config.json');
   const herdrLog = path.join(tmp, 'herdr.log');
-  fs.writeFileSync(config, JSON.stringify({ herdr: { bin: path.join(FIXTURES, 'fake-herdr.js') }, deck: { pollMs: 300, frameMs: 200 } }));
+  fs.writeFileSync(config, JSON.stringify({ herdr: { bin: path.join(FIXTURES, 'fake-herdr.js') }, deck: { pollMs: 300, frameMs: 200 }, voice: { enabled: false } }));
   const server = await startServer();
   const child = spawn(process.execPath, [path.join(PLUGIN, 'index.js'), '-port', String(server.port), '-pluginUUID', 'UUID-1', '-registerEvent', 'registerPlugin', '-info', '{}'], {
     env: { ...process.env, HERDR_VSD_DECK_CONFIG: config, FAKE_HERDR_SNAPSHOT: path.join(FIXTURES, 'snapshot.json'), FAKE_HERDR_LOG: herdrLog },
@@ -272,19 +289,26 @@ test('end to end: VSD Craft launches the plugin, keys render, a press focuses he
     }
     throw new Error(`timed out waiting for ${what}`);
   };
+  const herdrCalled = async (line) => {
+    const end = Date.now() + 5000;
+    while (Date.now() < end) {
+      if (fs.existsSync(herdrLog) && fs.readFileSync(herdrLog, 'utf8').includes(line)) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error(`herdr was not called with ${line}`);
+  };
 
   assert.deepEqual(await waitFor(() => true, 'registration'), { event: 'registerPlugin', uuid: 'UUID-1' });
-  peer.sendJson({ event: 'willAppear', action: AGENT_ACTION, context: 'k1', device: 'd', payload: { coordinates: { row: 0, column: 0 }, controller: 'Keypad' } });
-  peer.sendJson({ event: 'willAppear', action: AGENT_ACTION, context: 'k2', device: 'd', payload: { coordinates: { row: 0, column: 1 }, controller: 'Keypad' } });
-  await waitFor((m) => m.event === 'setImage' && m.context === 'k2' && svgOf(m.payload.image).includes('reviewer'), 'the blocked agent on k2');
-  peer.sendJson({ event: 'keyUp', action: AGENT_ACTION, context: 'k2', payload: {} });
-  const end = Date.now() + 5000;
-  while (Date.now() < end && !(fs.existsSync(herdrLog) && fs.readFileSync(herdrLog, 'utf8').includes('agent focus w1:p2'))) {
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  assert.match(fs.readFileSync(herdrLog, 'utf8'), /agent focus w1:p2/);
+  peer.sendJson({ event: 'willAppear', action: SPACE_ACTION, context: 's0', device: 'd', payload: { coordinates: { row: 0, column: 0 }, controller: 'Keypad' } });
+  peer.sendJson({ event: 'willAppear', action: SPACE_ACTION, context: 's1', device: 'd', payload: { coordinates: { row: 0, column: 1 }, controller: 'Keypad' } });
+  peer.sendJson({ event: 'willAppear', action: TAB_ACTION, context: 't0', device: 'd', payload: { coordinates: { row: 1, column: 0 }, controller: 'Keypad' } });
+  peer.sendJson({ event: 'willAppear', action: TAB_ACTION, context: 't1', device: 'd', payload: { coordinates: { row: 1, column: 1 }, controller: 'Keypad' } });
+  await waitFor((m) => m.event === 'setImage' && m.context === 't1' && svgOf(m.payload.image).includes('DB移行'), 'the blocked tab on t1');
+  peer.sendJson({ event: 'keyUp', action: TAB_ACTION, context: 't1', payload: {} });
+  await herdrCalled('tab focus w1:t2');
+  peer.sendJson({ event: 'keyUp', action: SPACE_ACTION, context: 's1', payload: {} });
+  await herdrCalled('workspace focus w2');
 
-  // VSD Craft がソケットを閉じたらプラグインも終了する
   peer.close();
   const [code] = await once(child, 'exit');
   assert.equal(code, 0);

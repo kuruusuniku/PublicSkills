@@ -3,6 +3,7 @@
 
 // テスト用の偽 herdr CLI。
 //   FAKE_HERDR_SNAPSHOT: `api snapshot` で返す JSON ファイル (無ければ「サーバ未起動」エラー)
+//   FAKE_HERDR_SCREEN:   `pane read` で返す画面のテキストファイル
 //   FAKE_HERDR_LOG:      受け取った引数を1行ずつ追記するファイル
 
 const fs = require('node:fs');
@@ -14,20 +15,27 @@ const fail = (code, message) => {
   process.stderr.write(`${JSON.stringify({ id: 'cli', error: { code, message } })}\n`);
   process.exit(1);
 };
-
-if (args[0] === 'api' && args[1] === 'snapshot') {
+const snapshot = () => {
   const file = process.env.FAKE_HERDR_SNAPSHOT;
   if (!file || !fs.existsSync(file)) fail('server_not_running', 'no herdr server is running at /tmp/herdr.sock; run `herdr` to start or attach it');
-  process.stdout.write(`${JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')))}\n`);
-} else if (args[0] === 'workspace' && args[1] === 'get') {
-  const file = process.env.FAKE_HERDR_SNAPSHOT;
-  if (!file || !fs.existsSync(file)) fail('server_not_running', 'no herdr server is running');
-  const { snapshot } = JSON.parse(fs.readFileSync(file, 'utf8')).result;
-  const workspace = snapshot.workspaces.find((w) => w.workspace_id === args[2]);
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+};
+const ok = (id) => process.stdout.write(`${JSON.stringify({ id, result: { type: 'ok' } })}\n`);
+
+const [area, verb, target] = args;
+if (area === 'api' && verb === 'snapshot') {
+  process.stdout.write(`${JSON.stringify(snapshot())}\n`);
+} else if (area === 'workspace' && verb === 'get') {
+  const workspace = snapshot().result.snapshot.workspaces.find((w) => w.workspace_id === target);
   if (!workspace) fail('not_found', 'workspace not found');
   process.stdout.write(`${JSON.stringify({ id: 'cli:workspace:get', result: { type: 'workspace_info', workspace } })}\n`);
-} else if (args[0] === 'agent' && args[1] === 'focus') {
-  process.stdout.write(`${JSON.stringify({ id: 'cli:agent:focus', result: { type: 'ok' } })}\n`);
+} else if ((area === 'workspace' || area === 'tab' || area === 'agent') && verb === 'focus') {
+  snapshot();
+  ok(`cli:${area}:focus`);
+} else if (area === 'pane' && verb === 'read') {
+  snapshot();
+  const file = process.env.FAKE_HERDR_SCREEN;
+  process.stdout.write(file && fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : `screen of ${target}\n`);
 } else {
   fail('unknown', `unsupported: ${args.join(' ')}`);
 }

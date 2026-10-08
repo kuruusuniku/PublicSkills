@@ -1,127 +1,170 @@
 'use strict';
 
-// キーに描くドット絵の羊 (herdr = 群れを率いる、にちなんだオリジナルキャラ)。
-// 状態ごとに2コマのアニメーションを持つ:
-//   working: 走る (脚が交互に動き、汗が飛ぶ)
-//   blocked: 頭上の「!」が点滅
-//   done:    ぴょんと跳ねてキラキラ
-//   idle:    目を閉じて Zzz
-//   unknown: 頭上に「?」
+// タブのボタンに住むドット絵のキャラクター (14x12 マス)。状態ごとに演技を変える:
+//   working: 机でタイピング (汗をかく)       blocked: 手を振って「!」の吹き出し
+//   done:    バンザイして紙吹雪               idle:    居眠り (zzz)
+//   none:    エージェントがいないタブは空席 (椅子だけ)
+// スペースのボタンには、住人の顔 (6x5 マス) を小さく並べる。
 
-const GRID_W = 24;
-const GRID_H = 16;
+const CHAR_W = 14;
+const CHAR_H = 12;
+const FACE_W = 6;
+const FACE_H = 5;
 
-const PALETTE = {
-  W: '#f8fafc', // 毛
-  w: '#cbd5e1', // 毛の影
-  F: '#52525b', // 顔
-  L: '#a1a1aa', // 脚
-  e: '#ffffff', // 目
-  k: '#d4d4d8', // 閉じた目
-  p: '#f9a8d4', // ほっぺ
+const COLORS = {
+  blocked: { B: '#f2557d', D: '#c93a60' },
+  working: { B: '#f7c948', D: '#d9a520' },
+  done: { B: '#7fe3c4', D: '#4fbf9d' },
+  idle: { B: '#8aa8e0', D: '#6582bf' },
+  none: { B: '#6b5a8e', D: '#4d3f6b' },
 };
 
-// 右向きの羊 (18x10)。脚は別パーツ。
+const COMMON = {
+  K: '#1b1530', // 輪郭・目
+  C: '#ff9fb5', // ほっぺ
+  W: '#ffffff', // 吹き出し
+  R: '#e11d48', // 「!」
+  S: '#7dd3fc', // 汗
+  T: '#3d3360', // 机の天板
+  F: '#2a2347', // 机の前板
+  Z: '#e2e8f0', // zzz
+  y: '#fde047', // 紙吹雪
+  p: '#f472b6',
+  c: '#22d3ee',
+  o: '#fb923c',
+};
+
+// 体 (2〜10 行目)。E は目、C はほっぺ。
 const BODY = [
-  '....WW.WW.WW......',
-  '..WWWWWWWWWWWWWW..',
-  '.WWWWWWWWWWWWFFFF.',
-  'WWWWWWWWWWWWFFFFFF',
-  'WWWWWWWWWWWWFFFeFF',
-  'WWWWWWWWWWWWFFFFFF',
-  'WWWWWWWWWWWWFFFFp.',
-  '.WWWWWWWWWWWWFFF..',
-  '..wWWWWWWWWWWw....',
-  '...wwwwwwwwww.....',
+  '..............',
+  '..............',
+  '.....KKKK.....',
+  '....KBBBBK....',
+  '...KBBBBBBK...',
+  '...KBEBBEBK...',
+  '...KBEBBEBK...',
+  '...KCBBBBCK...',
+  '...KBBBBBBK...',
+  '...KDBBBBDK...',
+  '....KKKKKK....',
+  '....K....K....',
 ];
 
-const LEGS = {
-  stand: ['...L..L...L..L....', '...L..L...L..L....'],
-  runA: ['..L...L..L...L....', '.L.....L.L.....L..'],
-  runB: ['....LL.....LL.....', '....LL.....LL.....'],
-  tuck: ['...L.L....L.L.....', '..................'],
-};
-
-const EYE_ROW = 4;
-const EYE_COL = 15;
-
-const GLYPHS = {
-  bang: ['XX', 'XX', 'XX', 'XX', '..', 'XX'],
-  question: ['XXX.', '...X', '..X.', '.X..', '....', '.X..'],
-  z: ['XXX', '.X.', 'XXX'],
-  Z: ['XXXX', '..X.', '.X..', 'XXXX'],
-  sparkle: ['.X.', 'XXX', '.X.'],
-  drop: ['.X', 'XX', 'XX'],
-  dash: ['XXX'],
-};
-
-const SHEEP_X = 3;
-const SHEEP_Y = 4;
-
-function sheep({ legs = 'stand', eyes = 'open', dx = 0, dy = 0 }) {
-  const rows = [...BODY, ...LEGS[legs]].map((row) => row.split(''));
-  if (eyes === 'closed') {
-    rows[EYE_ROW][EYE_COL] = 'k';
-    rows[EYE_ROW][EYE_COL - 1] = 'k';
-  }
-  const pixels = [];
-  rows.forEach((row, y) => row.forEach((ch, x) => {
-    if (ch !== '.') pixels.push({ x: SHEEP_X + dx + x, y: SHEEP_Y + dy + y, color: PALETTE[ch] });
-  }));
-  return pixels;
+function grid(rows) {
+  return rows.map((row) => row.split(''));
 }
 
-function glyph(name, x, y, color) {
-  const pixels = [];
-  GLYPHS[name].forEach((row, gy) => row.split('').forEach((ch, gx) => {
-    if (ch === 'X') pixels.push({ x: x + gx, y: y + gy, color });
-  }));
-  return pixels;
+function put(g, x, y, ch) {
+  if (y >= 0 && y < g.length && x >= 0 && x < g[y].length) g[y][x] = ch;
+}
+
+function stamp(g, x0, y0, rows) {
+  rows.forEach((row, dy) => row.split('').forEach((ch, dx) => { if (ch !== '.') put(g, x0 + dx, y0 + dy, ch); }));
+}
+
+function body({ eyes = 'open' } = {}) {
+  const g = grid(BODY);
+  if (eyes !== 'open') {
+    // 閉じた目 / 下を見る目: 目を1行にする
+    for (const x of [5, 8]) { put(g, x, 5, 'B'); put(g, x, 6, 'K'); }
+    if (eyes === 'closed') { put(g, 4, 6, 'K'); put(g, 9, 6, 'K'); put(g, 4, 5, 'B'); put(g, 9, 5, 'B'); }
+  }
+  return g;
 }
 
 const FRAMES = {
-  working: [
-    () => [...glyph('dash', 0, 8, '#93c5fd'), ...glyph('dash', 0, 11, '#93c5fd'), ...sheep({ legs: 'runA' }), ...glyph('drop', 21, 1, '#60a5fa')],
-    () => [...glyph('dash', 1, 7, '#93c5fd'), ...glyph('dash', 0, 10, '#93c5fd'), ...sheep({ legs: 'runB', dy: -1 }), ...glyph('drop', 22, 0, '#60a5fa')],
-  ],
-  blocked: [
-    () => [...sheep({}), ...glyph('bang', 21, 0, '#fbbf24')],
-    () => [...sheep({ dx: 1 }), ...glyph('bang', 21, 0, '#fef3c7')],
-  ],
-  done: [
-    () => [...sheep({}), ...glyph('sparkle', 0, 2, '#86efac'), ...glyph('sparkle', 21, 5, '#fde047')],
-    () => [...sheep({ legs: 'tuck', dy: -3 }), ...glyph('sparkle', 1, 0, '#fde047'), ...glyph('sparkle', 20, 1, '#86efac')],
-  ],
-  idle: [
-    () => [...sheep({ eyes: 'closed' }), ...glyph('z', 20, 2, '#94a3b8')],
-    () => [...sheep({ eyes: 'closed' }), ...glyph('Z', 20, 0, '#cbd5e1')],
-  ],
-  unknown: [
-    () => [...sheep({}), ...glyph('question', 20, 0, '#cbd5e1')],
-    () => [...sheep({}), ...glyph('question', 20, 0, '#64748b')],
-  ],
+  // 机でタイピング: 手が上下し、汗が落ちる
+  working: [0, 1].map((f) => () => {
+    const g = body({ eyes: 'down' });
+    stamp(g, 0, 9, ['TTTTTTTTTTTTTT', '.FFFFFFFFFFFF.', '.F..........F.']);
+    // 手 (体の色) をキーボードの上で交互に上げ下げ
+    put(g, 2, f ? 7 : 8, 'B'); put(g, 11, f ? 8 : 7, 'B');
+    put(g, 12, f ? 3 : 2, 'S'); put(g, 12, f ? 4 : 3, 'S');
+    return g;
+  }),
+  // 手を振る + 「!」の吹き出し
+  blocked: [0, 1].map((f) => () => {
+    const g = body();
+    if (f) stamp(g, 11, 2, ['..B', '.B.', 'B..']);
+    else stamp(g, 11, 2, ['.B.', '.B.', 'B..']);
+    stamp(g, 0, 0, ['WWW', 'WRW', 'WRW', 'WWW', 'WRW', '.WW']);
+    return g;
+  }),
+  // バンザイ + 紙吹雪
+  done: [0, 1].map((f) => () => {
+    const g = body();
+    stamp(g, f ? 1 : 2, 1, ['B.', 'B.', '.B']);
+    stamp(g, f ? 11 : 10, 1, ['.B', '.B', 'B.']);
+    const confetti = f
+      ? [[0, 0, 'y'], [4, 0, 'p'], [9, 1, 'c'], [13, 0, 'o'], [0, 6, 'c'], [13, 7, 'p']]
+      : [[2, 0, 'c'], [7, 0, 'o'], [12, 1, 'y'], [1, 4, 'p'], [12, 5, 'y'], [0, 9, 'o']];
+    for (const [x, y, ch] of confetti) put(g, x, y, ch);
+    return g;
+  }),
+  // 居眠り: 目を閉じて zzz
+  idle: [0, 1].map((f) => () => {
+    const g = body({ eyes: 'closed' });
+    // 「Z」がふわっと上がり、小さな z が出る (体の輪郭には重ねない)
+    stamp(g, 11, f ? 0 : 1, ['ZZZ', '..Z', '.Z.', 'ZZZ']);
+    if (f) put(g, 9, 1, 'Z');
+    return g;
+  }),
+  // 空席: 椅子だけ
+  none: [() => {
+    const g = grid(Array.from({ length: CHAR_H }, () => '.'.repeat(CHAR_W)));
+    stamp(g, 3, 2, [
+      '.KKKKKK.',
+      '.KDDDDK.',
+      '.KDDDDK.',
+      '.KDDDDK.',
+      '.KDDDDK.',
+      'KKKKKKKK',
+      'KBBBBBBK',
+      'KKKKKKKK',
+      '.K....K.',
+      '.K....K.',
+    ]);
+    return g;
+  }],
 };
 
-function frameFor(status, tick) {
-  const frames = FRAMES[status] || FRAMES.unknown;
-  return frames[Math.abs(tick) % frames.length]();
+const FACE = ['.KKKK.', 'KBBBBK', 'KEBBEK', 'KBBBBK', '.KKKK.'];
+
+function paint(g, status) {
+  const palette = { ...COMMON, ...(COLORS[status] || COLORS.none), E: COMMON.K };
+  const pixels = [];
+  g.forEach((row, y) => row.forEach((ch, x) => {
+    if (ch !== '.' && palette[ch]) pixels.push({ x, y, color: palette[ch] });
+  }));
+  return pixels;
 }
 
-// 横に連続する同色ピクセルを1つの <rect> にまとめて SVG を小さくする。
-function toRects(pixels) {
-  const grid = new Map();
-  for (const p of pixels) {
-    if (p.x < 0 || p.y < 0 || p.x >= GRID_W || p.y >= GRID_H) continue;
-    grid.set(`${p.x},${p.y}`, p.color); // 後から描いたものが上書き
-  }
+function frameFor(status, tick = 0) {
+  const frames = FRAMES[status] || FRAMES.none;
+  return paint(frames[Math.abs(tick) % frames.length](), status);
+}
+
+// スペースのボタン用の顔。確認待ちは点滅させる。
+function faceFor(status, tick = 0) {
+  const g = grid(FACE);
+  if (status === 'idle') { put(g, 1, 2, 'B'); put(g, 4, 2, 'B'); put(g, 1, 3, 'K'); put(g, 4, 3, 'K'); }
+  const pixels = paint(g, status);
+  if (status === 'blocked' && tick % 2) return pixels.map((p) => (p.color === COMMON.K ? { ...p, color: COMMON.W } : p));
+  return pixels;
+}
+
+// 横に連続する同色ピクセルを1つの矩形にまとめる。
+function toRects(pixels, width = CHAR_W, height = CHAR_H) {
+  const at = new Map();
+  for (const p of pixels) if (p.x >= 0 && p.y >= 0 && p.x < width && p.y < height) at.set(`${p.x},${p.y}`, p.color);
   const rects = [];
-  for (let y = 0; y < GRID_H; y += 1) {
+  for (let y = 0; y < height; y += 1) {
     let x = 0;
-    while (x < GRID_W) {
-      const color = grid.get(`${x},${y}`);
+    while (x < width) {
+      const color = at.get(`${x},${y}`);
       if (!color) { x += 1; continue; }
       let w = 1;
-      while (grid.get(`${x + w},${y}`) === color) w += 1;
+      while (at.get(`${x + w},${y}`) === color) w += 1;
       rects.push({ x, y, w, color });
       x += w;
     }
@@ -129,4 +172,4 @@ function toRects(pixels) {
   return rects;
 }
 
-module.exports = { frameFor, toRects, GRID_W, GRID_H, FRAMES };
+module.exports = { frameFor, faceFor, toRects, FRAMES, CHAR_W, CHAR_H, FACE_W, FACE_H };

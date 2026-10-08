@@ -49,13 +49,24 @@ class InstallTest(unittest.TestCase):
     def our_commands(self, event: str) -> list[str]:
         return [h["command"] for g in self.settings()["hooks"].get(event, []) for h in g["hooks"] if "zunda_notify.py" in h["command"]]
 
-    def test_fresh_install(self):
+    def test_fresh_install_leaves_claude_settings_alone(self):
         done = self.run_install()
         self.assertEqual(done.returncode, 0, done.stderr)
-        manifest = self.plugins / PLUGIN / "manifest.json"
-        self.assertEqual(json.loads(manifest.read_text(encoding="utf-8"))["CodePathMac"], "plugin/index.js")
+        manifest = json.loads((self.plugins / PLUGIN / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["CodePathMac"], "plugin/index.js")
+        self.assertEqual([a["UUID"].split(".")[-1] for a in manifest["Actions"]], ["space", "tab", "summary", "next", "mute"])
         self.assertTrue((self.plugins / PLUGIN / "plugin" / "index.js").exists())
+        self.assertTrue((self.plugins / PLUGIN / "propertyInspector" / "slot.html").exists())
+        self.assertTrue(os.access(self.plugins / PLUGIN / "plugin" / "index.js", os.X_OK))
         self.assertFalse((self.plugins / PLUGIN / "plugin" / "log").exists())
+        self.assertFalse((self.claude / "settings.json").exists(), "reading aloud is done by the plugin")
+        config = json.loads((self.home / ".config" / "herdr-vsd-deck" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["voice"]["source"], "deck")
+        self.assertEqual(config["voice"]["llmModel"], "qwen3.5:9b")
+
+    def test_with_claude_hooks(self):
+        done = self.run_install("--with-claude-hooks")
+        self.assertEqual(done.returncode, 0, done.stderr)
         hook = self.claude / "hooks" / "herdr-vsd-deck" / "zunda_notify.py"
         self.assertTrue(hook.exists())
         for event in ("Stop", "Notification"):
@@ -64,8 +75,9 @@ class InstallTest(unittest.TestCase):
             self.assertIn(hook.as_posix(), commands[0])
         stop = self.settings()["hooks"]["Stop"][0]["hooks"][0]
         self.assertTrue(stop["async"])
-        config = self.home / ".config" / "herdr-vsd-deck" / "config.json"
-        self.assertEqual(json.loads(config.read_text(encoding="utf-8"))["voice"]["speaker"], 3)
+        config = json.loads((self.home / ".config" / "herdr-vsd-deck" / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["voice"]["source"], "hooks", "the plugin then stays quiet")
+        self.assertEqual(config["voice"]["speaker"], 3)
 
     def test_existing_settings_are_kept_and_reinstall_is_idempotent(self):
         self.claude.mkdir(parents=True)
@@ -82,7 +94,7 @@ class InstallTest(unittest.TestCase):
         config.write_text('{"voice": {"speaker": 1}}', encoding="utf-8")
 
         for _ in range(2):
-            done = self.run_install()
+            done = self.run_install("--with-claude-hooks")
             self.assertEqual(done.returncode, 0, done.stderr)
         settings = self.settings()
         self.assertEqual(settings["model"], "opus")
@@ -91,12 +103,12 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(len(self.our_commands("Stop")), 1)
         self.assertEqual(len(self.our_commands("Notification")), 1)
         self.assertTrue(list(self.claude.glob("settings.json.bak-herdr-vsd-deck-*")))
-        self.assertEqual(config.read_text(encoding="utf-8"), '{"voice": {"speaker": 1}}', "config is never overwritten")
+        self.assertEqual(json.loads(config.read_text(encoding="utf-8")), {"voice": {"speaker": 1, "source": "hooks"}}, "only the source is changed")
 
     def test_broken_settings_are_not_touched(self):
         self.claude.mkdir(parents=True)
         (self.claude / "settings.json").write_text("{ not json", encoding="utf-8")
-        done = self.run_install("--skip-plugin")
+        done = self.run_install("--skip-plugin", "--with-claude-hooks")
         self.assertNotEqual(done.returncode, 0)
         self.assertIn("JSON として読めない", done.stderr)
         self.assertEqual((self.claude / "settings.json").read_text(encoding="utf-8"), "{ not json")
@@ -104,7 +116,7 @@ class InstallTest(unittest.TestCase):
     def test_uninstall_removes_only_our_parts(self):
         self.claude.mkdir(parents=True)
         (self.claude / "settings.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "mine.sh"}]}]}}), encoding="utf-8")
-        self.assertEqual(self.run_install().returncode, 0)
+        self.assertEqual(self.run_install("--with-claude-hooks").returncode, 0)
         done = self.run_install("--uninstall")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertFalse((self.plugins / PLUGIN).exists())
@@ -158,7 +170,7 @@ class InstallTest(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "fake npm is a shell script")
     def test_with_led_installs_node_hid_and_keeps_it_on_reinstall(self):
         self.fake_npm()
-        done = self.run_install("--with-led", "--skip-voice")
+        done = self.run_install("--with-led")
         self.assertEqual(done.returncode, 0, done.stderr)
         modules = self.plugins / PLUGIN / "plugin" / "node_modules" / "node-hid"
         self.assertTrue(modules.is_dir())
@@ -168,7 +180,7 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(config["voice"]["speaker"], 3, "other settings are kept")
 
         (self.home / "npm.log").unlink()
-        done = self.run_install("--skip-voice")  # 設定で有効なので入れ直しでも node-hid を確保する
+        done = self.run_install()  # 設定で有効なので入れ直しでも node-hid を確保する
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertTrue(modules.is_dir())
         self.assertTrue((self.home / "npm.log").exists())
@@ -176,7 +188,7 @@ class InstallTest(unittest.TestCase):
     def test_with_led_without_npm_explains(self):
         self.env["PATH"] = str(self.home / "empty-bin")
         done = subprocess.run(
-            [sys.executable, str(INSTALL), "--plugins-dir", str(self.plugins), "--with-led", "--skip-voice"],
+            [sys.executable, str(INSTALL), "--plugins-dir", str(self.plugins), "--with-led"],
             env=self.env, capture_output=True, text=True, timeout=60, check=False,
         )
         self.assertNotEqual(done.returncode, 0)

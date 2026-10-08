@@ -6,33 +6,27 @@
   },
   "deck": {
     "terminalApp": "",
-    "layout": "compact",
-    "order": "sticky",
     "animate": true,
-    "frameMs": 500,
-    "pollMs": 1000,
+    "frameMs": 300,
+    "pollMs": 1200,
     "ledRing": false
   },
   "voice": {
     "enabled": true,
+    "source": "deck",
+    "llmUrl": "http://127.0.0.1:11434/v1",
+    "llmModel": "qwen3.5:9b",
+    "llmApiKey": "",
     "voicevoxUrl": "http://127.0.0.1:50021",
     "speaker": 3,
-    "speedScale": 1.15,
-    "volumeScale": 1.0,
+    "speedScale": 1.1,
+    "maxChars": 120,
     "fallbackTts": true,
-    "maxChars": 90,
     "events": {
       "stop": true,
       "permission": true,
       "question": true,
       "idle": false
-    },
-    "llm": {
-      "provider": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model": "gemma3:4b",
-      "apiKey": "",
-      "timeoutSec": 25
     }
   }
 }

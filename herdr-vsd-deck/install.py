@@ -2,15 +2,14 @@
 """herdr-vsd-deck のインストーラ (macOS / Windows)。
 
   1. VSD Craft (Mirabox Stream Dock) のプラグインフォルダへ herdr Deck プラグインをコピー
-  2. ずんだもん読み上げフックを ~/.claude/hooks/herdr-vsd-deck/ に置き、
-     ~/.claude/settings.json の Stop / Notification フックに登録 (元ファイルはバックアップ)
-  3. 設定ファイル ~/.config/herdr-vsd-deck/config.json が無ければ雛形を作る (既存は上書きしない)
+     (ずんだもんの読み上げもプラグインが行う。~/.claude/settings.json には触らない)
+  2. 設定ファイル ~/.config/herdr-vsd-deck/config.json が無ければ雛形を作る (既存は上書きしない)
+  3. --with-claude-hooks のときだけ、読み上げを Claude Code のフックで行うように登録する
 
   python3 install.py                 # 全部入れる
   python3 install.py --restart       # 入れたあと VSD Craft を再起動する (macOS)
   python3 install.py --with-led      # VSD M18 の RGB ライトも状態色にする (実験的。npm で node-hid を入れる)
-  python3 install.py --skip-voice    # キー表示だけ
-  python3 install.py --skip-plugin   # 読み上げだけ
+  python3 install.py --with-claude-hooks  # 読み上げを Claude Code のフックで行う (代替の方式)
   python3 install.py --uninstall     # 取り除く (config.json は残す)
 """
 
@@ -131,9 +130,11 @@ def install_node_hid(dest: Path) -> None:
     subprocess.run([npm, "install", "--prefix", str(dest / "plugin"), "--no-save", "--no-package-lock", "--no-audit", "--no-fund", NODE_HID], check=True)
 
 
-def update_config(path: Path, deck: dict) -> None:
+def update_config(path: Path, changes: dict) -> None:
+    """config.json の一部 ({"deck": {...}} など) だけを書き換える。ほかの設定は残す"""
     data = load_settings(path) if path.exists() else {}
-    data.setdefault("deck", {}).update(deck)
+    for section, values in changes.items():
+        data.setdefault(section, {}).update(values)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
@@ -258,7 +259,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="herdr-vsd-deck をインストールする")
     parser.add_argument("--plugins-dir", help="VSD Craft の plugins フォルダ (自動検出できない場合)")
     parser.add_argument("--skip-plugin", action="store_true", help="VSD Craft プラグインを入れない")
-    parser.add_argument("--skip-voice", action="store_true", help="ずんだもん読み上げフックを入れない")
+    parser.add_argument("--with-claude-hooks", action="store_true",
+                        help="読み上げをプラグインではなく Claude Code のフックで行う (settings.json に Stop / Notification を登録)")
     parser.add_argument("--uninstall", action="store_true", help="プラグインとフックを取り除く")
     parser.add_argument("--with-led", action="store_true", help="VSD M18 の RGB ライトを状態色にする (実験的。npm で node-hid を入れる)")
     parser.add_argument("--restart", action="store_true", help="インストール後に VSD Craft を再起動する (macOS)")
@@ -271,13 +273,12 @@ def main(argv: list[str] | None = None) -> int:
             if target.exists():
                 shutil.rmtree(target)
                 print(f"プラグインを削除しました: {target}")
-        if not args.skip_voice:
-            backup = unregister_hooks(claude_dir() / "settings.json")
-            if backup:
-                print(f"settings.json からフックを外しました (バックアップ: {backup})")
-            if hook_path().exists():
-                shutil.rmtree(hook_path().parent)
-                print(f"フックを削除しました: {hook_path().parent}")
+        backup = unregister_hooks(claude_dir() / "settings.json")
+        if backup:
+            print(f"settings.json からフックを外しました (バックアップ: {backup})")
+        if hook_path().exists():
+            shutil.rmtree(hook_path().parent)
+            print(f"フックを削除しました: {hook_path().parent}")
         print("設定ファイルは残しています:", config_file())
         return 0
 
@@ -290,33 +291,31 @@ def main(argv: list[str] | None = None) -> int:
         if args.with_led or led_enabled(cfg):
             install_node_hid(dest)
             if args.with_led:
-                update_config(cfg, {"ledRing": True})
+                update_config(cfg, {"deck": {"ledRing": True}})
                 print("config.json の deck.ledRing を true にしました (VSD Craft の RGB ライト効果はオフにしておくと競合しません)")
         if args.restart:
             restart_vsd_craft()
 
-    if not args.skip_voice:
+    if args.with_claude_hooks:
         hook, backup = install_voice(args.python)
+        update_config(cfg, {"voice": {"source": "hooks"}})
         print(f"読み上げフックを配置しました: {hook}")
         print(f"Claude Code の Stop / Notification フックに登録しました: {claude_dir() / 'settings.json'}")
+        print("config.json の voice.source を hooks にしました (プラグインは読み上げません)")
         if backup:
             print(f"  元の settings.json のバックアップ: {backup}")
 
+    check = hook_command(args.python, HOOK_SRC)
     print(
         "\n次にやること:\n"
         "  1. VSD Craft を再起動し、アクション一覧の「herdr Deck」から\n"
-        "     「herdr エージェント」を並べたいキーへ、「herdr サマリー」を1つ置く\n"
-        "     (VSD M18 なら 画面なしの3ボタンに「herdr サマリー」「herdr 次へ」「読み上げミュート」がおすすめ)\n"
+        "     上段に「herdr スペース」、その下に「herdr タブ」を並べる\n"
+        "     (VSD M18 なら 上段5つがスペース、残り10個がタブ。下の3ボタンに サマリー / 次へ / 読み上げミュート)\n"
         "  2. herdr を起動して、その中で Claude Code を動かす (状態は herdr が画面から検出します)\n"
+        "  3. 読み上げ: VOICEVOX を起動 (既定 http://127.0.0.1:50021) し、ollama pull qwen3.5:9b\n"
+        f"     接続確認: {check} --check\n"
+        f"     試し読み: {check} --say \"準備できたのだ\"\n"
     )
-    if not args.skip_voice:
-        print(
-            "  3. VOICEVOX を起動 (既定 http://127.0.0.1:50021)\n"
-            "  4. ローカル LLM を用意: ollama pull gemma3:4b  (無くても定型文で読み上げます)\n"
-            f"  5. 接続確認: {hook_command(args.python, hook_path())} --check\n"
-            f"     試し読み: {hook_command(args.python, hook_path())} --say \"準備できたのだ\"\n"
-            "  6. 実行中の Claude Code は /hooks を開くか再起動するとフックが有効になります\n"
-        )
     return 0
 
 

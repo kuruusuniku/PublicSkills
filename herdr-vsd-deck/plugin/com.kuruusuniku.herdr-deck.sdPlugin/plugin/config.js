@@ -1,8 +1,8 @@
 'use strict';
 
-// 設定は読み上げフックと共有する JSON ファイル1つにまとめる:
+// 設定は JSON ファイル1つにまとめる:
 //   ~/.config/herdr-vsd-deck/config.json  (HERDR_VSD_DECK_CONFIG で上書き可)
-// ファイルが無い・壊れている場合は既定値で動く。更新は mtime を見て自動で取り込む。
+// ファイルが無い・壊れている場合は既定値で動く。更新は mtime を見て自動で取り込む (再起動不要)。
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -16,12 +16,21 @@ const DEFAULTS = Object.freeze({
   },
   deck: {
     terminalApp: '', // 空なら herdr クライアントを動かしているターミナルを自動検出
-    layout: 'compact', // compact: 64px キー (VSD M18 など) 向け / detailed: 大きいキー向けに文字を多く
-    order: 'sticky', // sticky: 一度割り当てたキーを動かさない / priority: 確認待ち→完了→作業中→待機 の順
     animate: true,
-    frameMs: 500,
-    pollMs: 1000,
+    frameMs: 300, // キャラクターのコマ送り間隔。記事は 150ms。M18 で重ければ大きく
+    pollMs: 1200, // herdr に状態を聞きに行く間隔 (記事と同じ 1.2 秒)
     ledRing: false, // VSD M18 の RGB ライトを状態色にする (実験的。node-hid が必要)
+  },
+  voice: {
+    enabled: true,
+    source: 'deck', // deck: プラグインが herdr の画面を読んで読み上げる (記事の方式) / hooks: Claude Code のフックで読み上げる
+    llmUrl: 'http://127.0.0.1:11434/v1', // OpenAI 互換の Chat Completions (Ollama なら /v1)
+    llmModel: 'qwen3.5:9b',
+    llmApiKey: '',
+    voicevoxUrl: 'http://127.0.0.1:50021',
+    speaker: 3, // ずんだもん (ノーマル)
+    speedScale: 1.1,
+    maxChars: 120,
   },
 });
 
@@ -58,12 +67,16 @@ function normalize(raw) {
   const cfg = merge(structuredClone(DEFAULTS), raw); // 既定値オブジェクトを共有・変更しない
   cfg.deck.frameMs = clampNumber(cfg.deck.frameMs, 150, 5000, DEFAULTS.deck.frameMs);
   cfg.deck.pollMs = clampNumber(cfg.deck.pollMs, 300, 10000, DEFAULTS.deck.pollMs);
-  if (!['sticky', 'priority'].includes(cfg.deck.order)) cfg.deck.order = DEFAULTS.deck.order;
-  if (!['compact', 'detailed'].includes(cfg.deck.layout)) cfg.deck.layout = DEFAULTS.deck.layout;
   cfg.deck.animate = cfg.deck.animate !== false;
   cfg.deck.ledRing = cfg.deck.ledRing === true;
   for (const key of ['bin', 'session', 'socketPath']) cfg.herdr[key] = String(cfg.herdr[key] || '');
   cfg.deck.terminalApp = String(cfg.deck.terminalApp || '');
+  cfg.voice.enabled = cfg.voice.enabled !== false;
+  if (!['deck', 'hooks'].includes(cfg.voice.source)) cfg.voice.source = DEFAULTS.voice.source;
+  for (const key of ['llmUrl', 'llmModel', 'llmApiKey', 'voicevoxUrl']) cfg.voice[key] = String(cfg.voice[key] ?? DEFAULTS.voice[key]);
+  cfg.voice.speaker = clampNumber(cfg.voice.speaker, 0, 10000, DEFAULTS.voice.speaker);
+  cfg.voice.speedScale = clampNumber(cfg.voice.speedScale, 0.5, 2, DEFAULTS.voice.speedScale);
+  cfg.voice.maxChars = clampNumber(cfg.voice.maxChars, 30, 400, DEFAULTS.voice.maxChars);
   return cfg;
 }
 

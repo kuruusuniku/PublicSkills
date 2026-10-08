@@ -1,32 +1,289 @@
 {
-  "id": "cli:api:snapshot",
-  "result": {
-    "type": "session_snapshot",
-    "snapshot": {
-      "version": "0.9.3",
-      "protocol": 1,
-      "focused_workspace_id": "w1",
-      "focused_tab_id": "w1:t1",
-      "focused_pane_id": "w1:p1",
-      "workspaces": [
-        { "workspace_id": "w1", "number": 1, "label": "api", "focused": true, "pane_count": 2, "tab_count": 1, "active_tab_id": "w1:t1", "agent_status": "blocked" },
-        { "workspace_id": "w2", "number": 2, "label": "フロント", "focused": false, "pane_count": 1, "tab_count": 1, "active_tab_id": "w2:t1", "agent_status": "done" }
-      ],
-      "tabs": [
-        { "tab_id": "w1:t1", "workspace_id": "w1", "number": 1, "label": "main", "focused": true, "pane_count": 2, "agent_status": "blocked" },
-        { "tab_id": "w2:t1", "workspace_id": "w2", "number": 1, "label": "main", "focused": false, "pane_count": 1, "agent_status": "done" }
-      ],
-      "panes": [
-        { "pane_id": "w1:p1", "terminal_id": "term_a", "workspace_id": "w1", "tab_id": "w1:t1", "focused": true, "agent_status": "working", "revision": 3 },
-        { "pane_id": "w1:p2", "terminal_id": "term_b", "workspace_id": "w1", "tab_id": "w1:t1", "focused": false, "agent_status": "blocked", "revision": 5 },
-        { "pane_id": "w2:p1", "terminal_id": "term_c", "workspace_id": "w2", "tab_id": "w2:t1", "focused": false, "agent_status": "done", "revision": 9 }
-      ],
-      "layouts": [],
-      "agents": [
-        { "terminal_id": "term_c", "agent": "claude", "terminal_title": "✳ Update README", "terminal_title_stripped": "Update README", "agent_status": "done", "workspace_id": "w2", "tab_id": "w2:t1", "pane_id": "w2:p1", "focused": false, "state_change_seq": 4, "cwd": "/Users/me/src/web", "revision": 9 },
-        { "terminal_id": "term_a", "agent": "claude", "terminal_title": "⠋ Refactor auth", "terminal_title_stripped": "Refactor auth", "agent_status": "working", "workspace_id": "w1", "tab_id": "w1:t1", "pane_id": "w1:p1", "focused": true, "state_change_seq": 7, "cwd": "/Users/me/src/api", "revision": 3 },
-        { "terminal_id": "term_b", "name": "reviewer", "agent": "codex", "terminal_title_stripped": "Codex", "agent_status": "blocked", "workspace_id": "w1", "tab_id": "w1:t1", "pane_id": "w1:p2", "focused": false, "state_change_seq": 8, "cwd": "/Users/me/src/api", "revision": 5 }
-      ]
+ "id": "cli:api:snapshot",
+ "result": {
+  "type": "session_snapshot",
+  "snapshot": {
+   "version": "0.9.3",
+   "protocol": 1,
+   "focused_workspace_id": "w1",
+   "focused_tab_id": "w1:t1",
+   "focused_pane_id": "w1:p1",
+   "workspaces": [
+    {
+     "workspace_id": "w1",
+     "number": 1,
+     "label": "業務自動化",
+     "focused": true,
+     "pane_count": 6,
+     "tab_count": 5,
+     "active_tab_id": "w1:t1",
+     "agent_status": "blocked"
+    },
+    {
+     "workspace_id": "w2",
+     "number": 2,
+     "label": "herdr-streamdeck",
+     "focused": false,
+     "pane_count": 1,
+     "tab_count": 1,
+     "active_tab_id": "w2:t1",
+     "agent_status": "idle"
+    },
+    {
+     "workspace_id": "w3",
+     "number": 3,
+     "label": "執筆作業",
+     "focused": false,
+     "pane_count": 1,
+     "tab_count": 1,
+     "active_tab_id": "w3:t1",
+     "agent_status": "unknown"
     }
+   ],
+   "tabs": [
+    {
+     "tab_id": "w1:t1",
+     "workspace_id": "w1",
+     "number": 1,
+     "label": "工数入力",
+     "focused": true,
+     "pane_count": 1,
+     "agent_status": "unknown"
+    },
+    {
+     "tab_id": "w1:t2",
+     "workspace_id": "w1",
+     "number": 2,
+     "label": "DB移行",
+     "focused": false,
+     "pane_count": 1,
+     "agent_status": "unknown"
+    },
+    {
+     "tab_id": "w1:t3",
+     "workspace_id": "w1",
+     "number": 3,
+     "label": "手順書",
+     "focused": false,
+     "pane_count": 1,
+     "agent_status": "unknown"
+    },
+    {
+     "tab_id": "w1:t4",
+     "workspace_id": "w1",
+     "number": 4,
+     "label": "console",
+     "focused": false,
+     "pane_count": 1,
+     "agent_status": "unknown"
+    },
+    {
+     "tab_id": "w1:t5",
+     "workspace_id": "w1",
+     "number": 5,
+     "label": "調査",
+     "focused": false,
+     "pane_count": 1,
+     "agent_status": "unknown"
+    },
+    {
+     "tab_id": "w2:t1",
+     "workspace_id": "w2",
+     "number": 1,
+     "label": "claude",
+     "focused": false,
+     "pane_count": 1,
+     "agent_status": "unknown"
+    },
+    {
+     "tab_id": "w3:t1",
+     "workspace_id": "w3",
+     "number": 1,
+     "label": "1",
+     "focused": false,
+     "pane_count": 1,
+     "agent_status": "unknown"
+    }
+   ],
+   "panes": [
+    {
+     "pane_id": "w1:p1",
+     "terminal_id": "term_w1_p1",
+     "workspace_id": "w1",
+     "tab_id": "w1:t1",
+     "focused": true,
+     "agent_status": "working",
+     "agent": "claude",
+     "agent_session": {
+      "source": "herdr:claude",
+      "agent": "claude",
+      "kind": "id",
+      "value": "sess-w1:p1"
+     },
+     "revision": 1
+    },
+    {
+     "pane_id": "w1:p2",
+     "terminal_id": "term_w1_p2",
+     "workspace_id": "w1",
+     "tab_id": "w1:t2",
+     "focused": false,
+     "agent_status": "blocked",
+     "agent": "claude",
+     "agent_session": {
+      "source": "herdr:claude",
+      "agent": "claude",
+      "kind": "id",
+      "value": "sess-w1:p2"
+     },
+     "revision": 1
+    },
+    {
+     "pane_id": "w1:p3",
+     "terminal_id": "term_w1_p3",
+     "workspace_id": "w1",
+     "tab_id": "w1:t2",
+     "focused": false,
+     "agent_status": "idle",
+     "agent": "claude",
+     "agent_session": {
+      "source": "herdr:claude",
+      "agent": "claude",
+      "kind": "id",
+      "value": "sess-w1:p3"
+     },
+     "revision": 1
+    },
+    {
+     "pane_id": "w1:p4",
+     "terminal_id": "term_w1_p4",
+     "workspace_id": "w1",
+     "tab_id": "w1:t3",
+     "focused": false,
+     "agent_status": "done",
+     "agent": "claude",
+     "agent_session": {
+      "source": "herdr:claude",
+      "agent": "claude",
+      "kind": "id",
+      "value": "sess-w1:p4"
+     },
+     "revision": 1
+    },
+    {
+     "pane_id": "w1:p5",
+     "terminal_id": "term_w1_p5",
+     "workspace_id": "w1",
+     "tab_id": "w1:t4",
+     "focused": false,
+     "agent_status": "unknown",
+     "revision": 1
+    },
+    {
+     "pane_id": "w1:p6",
+     "terminal_id": "term_w1_p6",
+     "workspace_id": "w1",
+     "tab_id": "w1:t5",
+     "focused": false,
+     "agent_status": "idle",
+     "agent": "claude",
+     "agent_session": {
+      "source": "herdr:claude",
+      "agent": "claude",
+      "kind": "id",
+      "value": "sess-w1:p6"
+     },
+     "revision": 1
+    },
+    {
+     "pane_id": "w2:p1",
+     "terminal_id": "term_w2_p1",
+     "workspace_id": "w2",
+     "tab_id": "w2:t1",
+     "focused": false,
+     "agent_status": "idle",
+     "agent": "claude",
+     "agent_session": {
+      "source": "herdr:claude",
+      "agent": "claude",
+      "kind": "id",
+      "value": "sess-w2:p1"
+     },
+     "revision": 1
+    },
+    {
+     "pane_id": "w3:p1",
+     "terminal_id": "term_w3_p1",
+     "workspace_id": "w3",
+     "tab_id": "w3:t1",
+     "focused": false,
+     "agent_status": "unknown",
+     "revision": 1
+    }
+   ],
+   "layouts": [],
+   "agents": [
+    {
+     "terminal_id": "term_w1_p1",
+     "agent": "claude",
+     "agent_status": "working",
+     "workspace_id": "w1",
+     "tab_id": "w1:t1",
+     "pane_id": "w1:p1",
+     "focused": true,
+     "revision": 1
+    },
+    {
+     "terminal_id": "term_w1_p2",
+     "agent": "claude",
+     "agent_status": "blocked",
+     "workspace_id": "w1",
+     "tab_id": "w1:t2",
+     "pane_id": "w1:p2",
+     "focused": false,
+     "revision": 1
+    },
+    {
+     "terminal_id": "term_w1_p3",
+     "agent": "claude",
+     "agent_status": "idle",
+     "workspace_id": "w1",
+     "tab_id": "w1:t2",
+     "pane_id": "w1:p3",
+     "focused": false,
+     "revision": 1
+    },
+    {
+     "terminal_id": "term_w1_p4",
+     "agent": "claude",
+     "agent_status": "done",
+     "workspace_id": "w1",
+     "tab_id": "w1:t3",
+     "pane_id": "w1:p4",
+     "focused": false,
+     "revision": 1
+    },
+    {
+     "terminal_id": "term_w1_p6",
+     "agent": "claude",
+     "agent_status": "idle",
+     "workspace_id": "w1",
+     "tab_id": "w1:t5",
+     "pane_id": "w1:p6",
+     "focused": false,
+     "revision": 1
+    },
+    {
+     "terminal_id": "term_w2_p1",
+     "agent": "claude",
+     "agent_status": "idle",
+     "workspace_id": "w2",
+     "tab_id": "w2:t1",
+     "pane_id": "w2:p1",
+     "focused": false,
+     "revision": 1
+    }
+   ]
   }
+ }
 }

@@ -34,10 +34,10 @@ test('SETLB frame is report id + CRT\\0\\0SETLB + 24 RGB triples, padded to 1024
 });
 
 test('ringColor picks the most urgent status', () => {
-  assert.deepEqual(ringColor({ blocked: 1, done: 1, working: 1 }, 0), [255, 110, 0]);
-  assert.deepEqual(ringColor({ blocked: 1 }, 1), [70, 30, 0]);
-  assert.deepEqual(ringColor({ blocked: 0, done: 2, working: 1 }, 0), [0, 200, 60]);
-  assert.deepEqual(ringColor({ blocked: 0, done: 0, working: 3 }, 0), [0, 50, 220]);
+  assert.deepEqual(ringColor({ blocked: 1, done: 1, working: 1 }, 0), [255, 20, 60]);
+  assert.deepEqual(ringColor({ blocked: 1 }, 1), [70, 5, 16]);
+  assert.deepEqual(ringColor({ blocked: 0, done: 2, working: 1 }, 0), [30, 220, 150]);
+  assert.deepEqual(ringColor({ blocked: 0, done: 0, working: 3 }, 0), [255, 180, 0]);
   assert.deepEqual(ringColor({ blocked: 0, done: 0, working: 0, idle: 4 }, 0), [0, 0, 0]);
 });
 
@@ -53,11 +53,11 @@ test('re-sends a lit colour every 2s, sends "off" once, and skips duplicates', (
   let now = 0;
   const { hid, log } = fakeHid();
   const ring = new LedRing({ hid, now: () => now });
-  ring.show([0, 200, 60]);
+  ring.show([30, 220, 150]);
   now = 1000;
-  assert.equal(ring.show([0, 200, 60]), false);
+  assert.equal(ring.show([30, 220, 150]), false);
   now = 2100;
-  assert.equal(ring.show([0, 200, 60]), true, 'keepalive so VSD Craft cannot leave it overwritten');
+  assert.equal(ring.show([30, 220, 150]), true, 'keepalive so VSD Craft cannot leave it overwritten');
   assert.equal(ring.show([0, 0, 0]), true);
   now = 99999;
   assert.equal(ring.show([0, 0, 0]), false, 'off is not re-asserted');

@@ -1,7 +1,7 @@
 'use strict';
 
 // VSD M18 の RGB ライト (枠の22個 + 前面2個) を、一番急ぎの状態の色で光らせる。実験的・opt-in。
-//   確認待ち: オレンジで脈動 / 完了: 緑 / 作業中: 青 / 全員待機: 消灯
+//   確認待ち: 赤で脈動 / 完了: ミント / 作業中: 黄 / 全員待機: 消灯
 //
 // プラグイン API には LED を操作する手段が無いので、USB HID で直接 SETLB コマンドを送る。
 // プロトコルは https://github.com/bidoofgoo/streamdock-m18 の PROTOCOL.md による:
@@ -21,10 +21,11 @@ const REPORT_SIZE = 1024;
 const SETLB = [0x43, 0x52, 0x54, 0x00, 0x00, 0x53, 0x45, 0x54, 0x4c, 0x42];
 const RESEND_MS = 2000;
 
+// 記事のボタンの色に合わせる: 確認待ち 赤 / 作業中 黄 / 完了 ミント
 const COLORS = {
-  blocked: [[255, 110, 0], [70, 30, 0]], // tick ごとに切り替えて脈動
-  done: [[0, 200, 60]],
-  working: [[0, 50, 220]],
+  blocked: [[255, 20, 60], [70, 5, 16]], // tick ごとに切り替えて脈動
+  done: [[30, 220, 150]],
+  working: [[255, 180, 0]],
 };
 
 function buildFrame(rgb) {

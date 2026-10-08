@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Claude Code のフックから呼ばれ、エージェントの状況をずんだもんの声で知らせる。
+"""Claude Code のフックから呼ばれ、エージェントの状況をずんだもんの声で知らせる (代替の方式)。
+
+既定では読み上げは VSD Craft プラグインが行う (herdr の画面を読む、SIOS Tech Lab の記事と同じ方式)。
+このスクリプトは、config の voice.source を "hooks" にしたとき (install.py --with-claude-hooks) だけ読み上げる。
+--check と --say は、どちらの方式でも VOICEVOX と LLM の確認に使える。
 
   Stop                         → 作業が終わった
   Notification (permission_prompt) → 許可待ちで止まっている
@@ -9,8 +13,8 @@
 流れ:
   1. フック入力 (stdin の JSON) から、どこで何が起きたかを判定する
      どこ = herdr のワークスペース名 (HERDR_WORKSPACE_ID から引く)。無ければ cwd のフォルダ名
-  2. ローカル LLM (Ollama / OpenAI 互換 API) で「何が起きて、次に何をすればいいか」を
-     ずんだもん口調の短い1〜2文にまとめる。LLM が無ければ定型文
+  2. ローカル LLM (OpenAI 互換の Chat Completions。Ollama なら /v1) で
+     「何をして → どうなって → 次に何をすればいいか」をずんだもん口調にまとめる。LLM が無ければ定型文
   3. VOICEVOX で合成して再生する。VOICEVOX が無ければ OS の読み上げ (設定で無効化可)
 
 標準ライブラリだけで動く。設定は ~/.config/herdr-vsd-deck/config.json の "voice"。
@@ -44,20 +48,18 @@ DEFAULTS: dict = {
     "herdr": {"bin": "", "session": "", "socketPath": ""},
     "voice": {
         "enabled": True,
+        "source": "deck",  # deck: プラグインが読む (既定) / hooks: このフックが読む
+        "llmUrl": "http://127.0.0.1:11434/v1",  # 空にすると LLM を使わず定型文
+        "llmModel": "qwen3.5:9b",
+        "llmApiKey": "",
+        "llmTimeoutSec": 40,
         "voicevoxUrl": "http://127.0.0.1:50021",
         "speaker": 3,  # ずんだもん (ノーマル)
-        "speedScale": 1.15,
+        "speedScale": 1.1,
         "volumeScale": 1.0,
         "fallbackTts": True,
-        "maxChars": 90,
+        "maxChars": 120,
         "events": {"stop": True, "permission": True, "question": True, "idle": False},
-        "llm": {
-            "provider": "ollama",  # ollama | openai | none
-            "url": "http://127.0.0.1:11434",
-            "model": "gemma3:4b",
-            "apiKey": "",
-            "timeoutSec": 25,
-        },
     },
 }
 
@@ -75,18 +77,19 @@ FALLBACK_TEMPLATES = {
     "idle": "{place}が入力を待ってるのだ。",
 }
 
-SYSTEM_PROMPT = """あなたは「ずんだもん」です。AIコーディングエージェントの状況を、開発者に音声で知らせる係をしています。
+SYSTEM_PROMPT = """あなたは「ずんだもん」です。画面を見ていない開発者に、AI コーディングエージェントの作業状況を声で伝えます。
+聞き手が「次に自分が何をすればいいか」を分かることを最優先にしてください。要約ではありません。
 
-ルール:
-- 出力は読み上げる文だけ。前置き、説明、かぎかっこ、箇条書き、Markdown、絵文字、URL、コードは書かない。
-- 1〜2文、全体で{max_chars}文字以内。
-- 語尾は「〜のだ」「〜なのだ」。
-- 1文目は、どこ(場所の名前)で何が起きたか。2文目は、開発者が次にやるべきこと。
-- ファイル名やコマンド名は、必要なときだけ短く言い換える。英単語の羅列は避ける。
+- 作業が終わったとき: 何をしたか → その結果どうなったか → 次にユーザーがすべきこと (質問や選択肢があればその中身) を 3 文で。
+- 確認待ち・質問のとき: 何の作業の途中か → 何の許可を求めているのか・何を質問しているのか → どう答えればいいか を 3 文で。
+  削除や上書きなど取り消しにくい操作は必ず言うこと。選択肢は読み上げるが、どれを選ぶべきかは勧めないこと。
+
+出力は読み上げる文だけ。すべての文を「〜のだ」「〜なのだ」で終え、前置き、敬語、箇条書き、記号、絵文字、URL は使わないこと。
+コマンドやファイルパスはそのまま読まずに言い換えること。全体で {max_chars} 文字以内。場所の名前は付けなくてよい。
 
 例:
-apiの認証まわりの修正が終わったのだ。テストが通ったか確認してほしいのだ。
-フロントでコマンドの実行許可を待ってるのだ。内容を見て許可してほしいのだ。"""
+ログイン画面の入力チェックを直したのだ。テストは全部通ったのだ。差分を見てコミットするか決めてほしいのだ。
+ビルド設定を直す作業の途中なのだ。古い出力フォルダを削除するコマンドの許可を求めているのだ。許可する、今後も聞かずに許可する、やめて指示し直す、のどれかを選んでほしいのだ。"""
 
 
 # ---------------------------------------------------------------- 設定
@@ -306,50 +309,46 @@ def http_json(url: str, payload: dict, timeout: float, headers: dict | None = No
         return json.loads(res.read().decode("utf-8"))
 
 
-def ask_llm(llm: dict, system: str, user: str) -> str | None:
-    provider = str(llm.get("provider") or "none").lower()
-    url = str(llm.get("url") or "").rstrip("/")
-    timeout = float(llm.get("timeoutSec") or 25)
-    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+def ask_llm(voice: dict, system: str, user: str) -> str | None:
+    """OpenAI 互換の Chat Completions に聞く (Ollama・LM Studio・llama.cpp など)。使えなければ None"""
+    base = str(voice.get("llmUrl") or "").rstrip("/")
+    model = str(voice.get("llmModel") or "")
+    if not base or not model:
+        return None
+    headers = {"Authorization": f"Bearer {voice['llmApiKey']}"} if voice.get("llmApiKey") else {}
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "reasoning_effort": "none",  # thinking で出力を使い切らないように
+        "temperature": 0.3,
+        "max_tokens": 400,
+        "stream": False,
+    }
+    timeout = float(voice.get("llmTimeoutSec") or 40)
     try:
-        if provider == "ollama":
-            payload = {
-                "model": llm.get("model"),
-                "messages": messages,
-                "stream": False,
-                "think": False,
-                "keep_alive": "15m",
-                "options": {"temperature": 0.4, "num_predict": 200},
-            }
-            try:
-                data = http_json(f"{url}/api/chat", payload, timeout)
-            except urllib.error.HTTPError as err:
-                if err.code != 400:
-                    raise
-                payload.pop("think")  # think を受け付けない古い Ollama / モデル向け
-                data = http_json(f"{url}/api/chat", payload, timeout)
-            return str(data.get("message", {}).get("content") or "") or None
-        if provider == "openai":
-            headers = {"Authorization": f"Bearer {llm['apiKey']}"} if llm.get("apiKey") else {}
-            base = url if url.endswith("/v1") else f"{url}/v1"
-            payload = {"model": llm.get("model"), "messages": messages, "temperature": 0.4, "max_tokens": 200}
+        try:
             data = http_json(f"{base}/chat/completions", payload, timeout, headers)
-            return str(data["choices"][0]["message"]["content"] or "") or None
+        except urllib.error.HTTPError as err:
+            if err.code != 400:
+                raise
+            payload.pop("reasoning_effort")  # reasoning_effort を受け付けないサーバ向け
+            data = http_json(f"{base}/chat/completions", payload, timeout, headers)
+        return str(data["choices"][0]["message"]["content"] or "") or None
     except (OSError, ValueError, KeyError, IndexError, TypeError, urllib.error.URLError) as err:
         log(f"LLM に聞けなかったので定型文にします: {err}")
     return None
 
 
 def compose(kind: str, place: str, detail: str, voice: dict) -> str:
-    max_chars = int(voice.get("maxChars") or 90)
+    max_chars = int(voice.get("maxChars") or 120)
     fallback = FALLBACK_TEMPLATES[kind].format(place=place)
-    user = f"場所: {place}\n出来事: {EVENT_DESCRIPTIONS[kind]}\n詳細:\n{detail or '(なし)'}"
-    answer = ask_llm(voice.get("llm", {}), SYSTEM_PROMPT.format(max_chars=max_chars), user)
+    user = f"出来事: {EVENT_DESCRIPTIONS[kind]}\n詳細:\n{detail or '(なし)'}"
+    answer = ask_llm(voice, SYSTEM_PROMPT.format(max_chars=max_chars), user)
     text = sanitize(answer or "", max_chars)
     # 短すぎる・ずんだもんになっていない応答は使わない
     if len(text) < 8 or "のだ" not in text:
         return fallback
-    return text
+    return f"{place}から。{text}"
 
 
 # ---------------------------------------------------------------- 発声
@@ -491,16 +490,16 @@ def check(cfg: dict) -> int:
     except (OSError, urllib.error.URLError) as err:
         ok = False
         print(f"VOICEVOX: NG {base} ({err})  → VOICEVOX を起動してください")
-    llm = voice["llm"]
-    if str(llm.get("provider")).lower() == "none":
+    if not voice.get("llmUrl") or not voice.get("llmModel"):
         print("LLM: 使わない設定 (定型文で読み上げます)")
     else:
-        answer = ask_llm(llm, SYSTEM_PROMPT.format(max_chars=voice["maxChars"]), "場所: テスト\n出来事: 動作確認\n詳細:\n接続テストです。")
+        answer = ask_llm(voice, SYSTEM_PROMPT.format(max_chars=voice["maxChars"]), "出来事: 動作確認\n詳細:\n接続テストです。")
         if answer:
-            print(f"LLM: OK ({llm.get('provider')} {llm.get('model')}) → {sanitize(answer, int(voice['maxChars']))}")
+            print(f"LLM: OK ({voice['llmModel']}) → {sanitize(answer, int(voice['maxChars']))}")
         else:
             ok = False
-            print(f"LLM: NG ({llm.get('provider')} {llm.get('url')} {llm.get('model')}) → 定型文で読み上げます")
+            print(f"LLM: NG ({voice['llmUrl']} {voice['llmModel']})  → ollama pull {voice['llmModel']} などで用意してください")
+    print(f"読み上げの方式: {'Claude Code のフック' if voice.get('source') == 'hooks' else 'VSD Craft プラグイン (herdr の画面を読む)'}")
     print(f"再生コマンド: {' '.join(player_command('<wav>') or ['見つかりません'])}")
     return 0 if ok else 1
 
@@ -527,6 +526,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not isinstance(hook, dict):
         return 0
+    if voice.get("source") != "hooks":
+        return 0  # 読み上げはプラグインが担当している (二重に読まない)
     if not voice.get("enabled", True) or os.environ.get("HERDR_VSD_DECK_MUTE") == "1" or mute_path().exists():
         return 0
     kind = classify(hook)

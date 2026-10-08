@@ -1,17 +1,17 @@
 'use strict';
 
 // herdr とのやり取りはすべて CLI 経由で行う (Unix ソケット / Windows 名前付きパイプの差を CLI が吸収する)。
-//   状態取得:   herdr api snapshot          → session.snapshot の JSON
-//   ジャンプ:   herdr agent focus <pane_id> → herdr 内でそのペインへ移動し「完了」を既読にする
+//   状態取得:     herdr api snapshot                → スペース・タブ・ペインと各ペインの agent_status
+//   切り替え:     herdr workspace focus <id> / herdr tab focus <tab_id>   (完了は既読になって待機へ)
+//   画面の読取り: herdr pane read <pane_id> --source recent-unwrapped --lines 200 --format text
 
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const STATUSES = new Set(['idle', 'working', 'blocked', 'done', 'unknown']);
-// Claude Code が端末タイトルを付ける前の既定値。タスク名としては意味が無いので表示しない。
-const GENERIC_TITLES = new Set(['claude', 'claude code', 'codex', 'herdr', '']);
+// agent_status のうちエージェントがいるもの。unknown などそれ以外は「エージェントなし」として扱う
+const SEVERITY = { blocked: 4, working: 3, done: 2, idle: 1 };
 
 // VSD Craft は GUI アプリなので PATH が最小限になる。herdr の各インストーラの置き場所も探す。
 function herdrCandidates(platform = process.platform, env = process.env, home = os.homedir()) {
@@ -39,6 +39,14 @@ function resolveHerdrBin(configured, { platform, env, home, exists = fs.existsSy
   return herdrCandidates(platform, env, home).find((candidate) => exists(candidate)) || null;
 }
 
+function parseJson(text) {
+  try {
+    return JSON.parse(text.trim().split('\n').filter(Boolean).pop() || '');
+  } catch {
+    return null;
+  }
+}
+
 class HerdrCli {
   constructor({ bin = '', session = '', socketPath = '' } = {}, deps = {}) {
     this.configured = bin;
@@ -64,7 +72,7 @@ class HerdrCli {
         if (err) {
           if (err.code === 'ENOENT') this.bin = null; // 次回また探す
           const detail = parseJson(String(stderr || ''))?.error?.message || String(stderr || '').trim() || err.message;
-          reject(Object.assign(new Error(detail), { code: err.code || 'HERDR_FAILED' }));
+          reject(Object.assign(new Error(detail), { code: err.code || 'HERDR_FAILED', killed: err.killed }));
           return;
         }
         resolve(String(stdout));
@@ -73,77 +81,117 @@ class HerdrCli {
   }
 
   async snapshot() {
-    const out = await this.run(['api', 'snapshot']);
-    const response = parseJson(out);
-    const snapshot = response?.result?.snapshot;
+    const snapshot = parseJson(await this.run(['api', 'snapshot']))?.result?.snapshot;
     if (!snapshot) throw new Error('herdr api snapshot の応答を解釈できません');
     return snapshot;
   }
 
-  focusAgent(paneId) {
-    return this.run(['agent', 'focus', paneId]);
+  focusWorkspace(workspaceId) {
+    return this.run(['workspace', 'focus', workspaceId]);
+  }
+
+  focusTab(tabId) {
+    return this.run(['tab', 'focus', tabId]);
+  }
+
+  readPane(paneId, lines = 200) {
+    return this.run(['pane', 'read', paneId, '--source', 'recent-unwrapped', '--lines', String(lines), '--format', 'text'], 8000);
   }
 }
 
-function parseJson(text) {
-  try {
-    return JSON.parse(text.trim().split('\n').filter(Boolean).pop() || '');
-  } catch {
-    return null;
+function statusOf(raw) {
+  return SEVERITY[raw] ? raw : 'none';
+}
+
+// いちばん深刻な状態 (確認待ち > 作業中 > 完了 > 待機)。エージェントがいなければ none
+function worst(statuses) {
+  let best = 'none';
+  for (const s of statuses) if (SEVERITY[s] && (best === 'none' || SEVERITY[s] > SEVERITY[best])) best = s;
+  return best;
+}
+
+function byNumber(a, b) {
+  return (a.number ?? Infinity) - (b.number ?? Infinity);
+}
+
+// snapshot を スペース → タブ → ペイン の木にする。並びは herdr の表示順。
+function buildModel(snapshot) {
+  const panesByTab = new Map();
+  const panes = (snapshot.panes || []).map((p) => ({
+    paneId: p.pane_id,
+    tabId: p.tab_id,
+    workspaceId: p.workspace_id,
+    status: statusOf(p.agent_status),
+    agent: p.agent || null,
+    focused: Boolean(p.focused),
+  }));
+  for (const p of panes) {
+    if (!panesByTab.has(p.tabId)) panesByTab.set(p.tabId, []);
+    panesByTab.get(p.tabId).push(p);
   }
-}
 
-function basename(p) {
-  if (!p) return '';
-  return String(p).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
-}
+  const tabsBySpace = new Map();
+  for (const t of [...(snapshot.tabs || [])].sort(byNumber)) {
+    const tabPanes = panesByTab.get(t.tab_id) || [];
+    const tab = {
+      id: t.tab_id,
+      workspaceId: t.workspace_id,
+      label: t.label || String(t.number ?? ''),
+      number: t.number,
+      panes: tabPanes,
+      status: worst(tabPanes.map((p) => p.status)),
+    };
+    if (!tabsBySpace.has(t.workspace_id)) tabsBySpace.set(t.workspace_id, []);
+    tabsBySpace.get(t.workspace_id).push(tab);
+  }
 
-// snapshot をキー表示用の平たいリストにする。並びは herdr の UI と同じ (ワークスペース→タブ→ペイン)。
-function buildAgents(snapshot) {
-  const workspaces = new Map((snapshot.workspaces || []).map((w) => [w.workspace_id, w]));
-  const tabs = new Map((snapshot.tabs || []).map((t) => [t.tab_id, t]));
-  const paneOrder = new Map((snapshot.panes || []).map((p, i) => [p.pane_id, i]));
-
-  const agents = (snapshot.agents || []).map((a, index) => {
-    const ws = workspaces.get(a.workspace_id);
-    const tab = tabs.get(a.tab_id);
-    const status = STATUSES.has(a.agent_status) ? a.agent_status : 'unknown';
-    const titleCandidates = [a.title, a.terminal_title_stripped];
-    const task = titleCandidates.map((t) => String(t || '').trim()).find((t) => !GENERIC_TITLES.has(t.toLowerCase())) || '';
+  const spaces = [...(snapshot.workspaces || [])].sort(byNumber).map((w) => {
+    const tabs = tabsBySpace.get(w.workspace_id) || [];
+    for (const tab of tabs) tab.spaceLabel = w.label;
     return {
-      id: a.terminal_id || a.pane_id, // ペイン移動で pane_id は変わるが terminal_id は変わらない
-      paneId: a.pane_id,
-      workspaceId: a.workspace_id,
-      tabId: a.tab_id,
-      status,
-      kind: a.display_agent || a.agent || 'agent',
-      name: a.name || '',
-      workspace: ws?.label || basename(a.foreground_cwd || a.cwd) || a.workspace_id,
-      tab: tab?.label || '',
-      task,
-      project: basename(a.foreground_cwd || a.cwd),
-      focused: Boolean(a.focused),
-      order: [ws?.number ?? Number.MAX_SAFE_INTEGER, tab?.number ?? Number.MAX_SAFE_INTEGER, paneOrder.get(a.pane_id) ?? index],
+      id: w.workspace_id,
+      label: w.label || String(w.number ?? ''),
+      number: w.number,
+      activeTabId: w.active_tab_id || null,
+      tabs,
+      status: worst(tabs.map((t) => t.status)),
     };
   });
 
-  agents.sort((x, y) => x.order[0] - y.order[0] || x.order[1] - y.order[1] || x.order[2] - y.order[2]);
-  return agents;
+  return {
+    spaces,
+    tabs: spaces.flatMap((s) => s.tabs),
+    panes,
+    focusedWorkspaceId: snapshot.focused_workspace_id || null,
+    focusedTabId: snapshot.focused_tab_id || null,
+  };
 }
 
-const URGENCY = { blocked: 0, done: 1, working: 2, idle: 3, unknown: 4 };
+const URGENT_ORDER = ['blocked', 'done', 'working'];
 
-// サマリーキーで押したときに飛ぶ先: 確認待ち → 完了(未読) → 作業中 の順。
-function mostUrgent(agents) {
-  return [...agents]
-    .filter((a) => a.status !== 'idle' && a.status !== 'unknown')
-    .sort((x, y) => URGENCY[x.status] - URGENCY[y.status])[0] || null;
+// サマリーで押したときに飛ぶ先: 確認待ち → 完了(未読) → 作業中 の順で最初のタブ
+function mostUrgent(tabs) {
+  for (const status of URGENT_ORDER) {
+    const hit = tabs.find((t) => t.status === status);
+    if (hit) return hit;
+  }
+  return null;
 }
 
-function countByStatus(agents) {
-  const counts = { blocked: 0, working: 0, done: 0, idle: 0, unknown: 0 };
-  for (const a of agents) counts[a.status] += 1;
+// 「次へ」の巡回順: 確認待ち → 完了 → 作業中 → 待機 (同じ状態の中は herdr の並び)。エージェントのいないタブは除く
+function urgencyOrder(tabs) {
+  const rank = { blocked: 0, done: 1, working: 2, idle: 3 };
+  return tabs.filter((t) => t.status !== 'none').map((t, i) => [t, i])
+    .sort(([a, i], [b, j]) => rank[a.status] - rank[b.status] || i - j)
+    .map(([t]) => t);
+}
+
+function countByStatus(tabs) {
+  const counts = { blocked: 0, working: 0, done: 0, idle: 0, none: 0 };
+  for (const t of tabs) counts[t.status] += 1;
   return counts;
 }
 
-module.exports = { HerdrCli, buildAgents, mostUrgent, countByStatus, herdrCandidates, resolveHerdrBin, parseJson, URGENCY };
+module.exports = {
+  HerdrCli, buildModel, mostUrgent, urgencyOrder, countByStatus, worst, herdrCandidates, resolveHerdrBin, parseJson, SEVERITY,
+};

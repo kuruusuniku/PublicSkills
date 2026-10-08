@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>herdr Deck</title>
+<style>
+  body { margin: 0; padding: 12px; font: 13px -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif; color: #d4d4d8; background: transparent; }
+  label { display: flex; align-items: center; gap: 10px; }
+  select { flex: 1; padding: 4px; background: #27272a; color: #f4f4f5; border: 1px solid #3f3f46; border-radius: 4px; }
+  p { margin: 10px 0 0; color: #a1a1aa; font-size: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<label>スロット
+  <select id="slot">
+    <option value="">自動 (置いた位置の順)</option>
+  </select>
+</label>
+<p id="help"></p>
+<script>
+  // 外部ライブラリを使わず、素の HTML と WebSocket だけで書いた設定画面。
+  // VSD Craft / Stream Deck は connectElgatoStreamDeckSocket を呼んでくる。
+  const select = document.getElementById('slot');
+  for (let i = 1; i <= 16; i += 1) select.add(new Option(String(i), String(i)));
+  let socket = null;
+  let uuid = null;
+
+  window.connectElgatoStreamDeckSocket = (port, inUuid, registerEvent, info, actionInfo) => {
+    uuid = inUuid;
+    const action = JSON.parse(actionInfo || '{}');
+    const slot = action.payload && action.payload.settings ? action.payload.settings.slot : '';
+    select.value = slot ? String(slot) : '';
+    document.getElementById('help').textContent = /\.space$/.test(action.action || '')
+      ? '何番目のスペースを表示するか。ページ 2 にスロット 6〜10 を置けば、6〜10 番目のスペースを出せます。'
+      : '選んだスペースの何番目のタブを表示するか。タブが多いときは、選択中のスペースをもう一度押すと次のページに進みます。';
+    socket = new WebSocket(`ws://127.0.0.1:${port}`);
+    socket.onopen = () => socket.send(JSON.stringify({ event: registerEvent, uuid }));
+  };
+
+  select.addEventListener('change', () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ event: 'setSettings', context: uuid, payload: { slot: select.value ? Number(select.value) : null } }));
+  });
+</script>
+</body>
+</html>
