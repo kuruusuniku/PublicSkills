@@ -201,7 +201,10 @@ test('renderAgent shows status, labels and blinks when blocked', () => {
   assert.match(f0, />reviewer</);
   assert.notEqual(f0, f1);
   const working = svgOf(renderAgent(agents[0], { agents, tick: 0 }));
-  assert.match(working, />api main</, 'two agents in one workspace are told apart by tab');
+  assert.match(working, />api 1</, 'two agents in one workspace are told apart by pane number');
+  // 本物の herdr ではタブ名が既定で "1" なので、同じタブの2体もペイン番号で分ける
+  const unnamed = agents.map((a) => ({ ...a, name: '', tab: '1' }));
+  assert.match(svgOf(renderAgent(unnamed[1], { agents: unnamed })), />api 2</);
   assert.match(working, />Refactor auth</);
   const still = (t) => renderAgent(agents[0], { agents, tick: t, animate: false });
   assert.equal(still(0), still(1), 'animation can be turned off');

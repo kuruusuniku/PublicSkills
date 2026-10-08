@@ -80,7 +80,7 @@ test('compact layout (default, 64px keys) fills keys with the status colour', as
   assert.match(bgOf(lastImage(sent, 'k2')), /^#(b45309|ea580c)$/);
   assert.equal(bgOf(lastImage(sent, 'k3')), '#15803d');
   assert.match(svgOf(lastImage(sent, 'k1')), /viewBox="0 0 64 64"/);
-  assert.match(svgOf(lastImage(sent, 'k1')), />api main</);
+  assert.match(svgOf(lastImage(sent, 'k1')), />api 1</);
   assert.match(svgOf(lastImage(sent, 'k2')), />reviewer</);
   assert.match(svgOf(lastImage(sent, 'k4')), />#4</);
   const summary = svgOf(lastImage(sent, 's1'));

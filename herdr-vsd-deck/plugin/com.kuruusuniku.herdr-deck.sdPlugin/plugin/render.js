@@ -81,10 +81,15 @@ function sprite(status, tick, { ox = 24, oy = 34, scale = 4 } = {}) {
     .join('');
 }
 
+// 同じワークスペースに複数いるときはペイン番号で見分ける (w1:p2 → "api 2")。
+// タブ名は既定で "1" なので、同じタブに並んだペインを区別できない。
 function agentLabels(agent, agents) {
-  const sameWorkspace = agents.filter((a) => a.workspaceId === agent.workspaceId).length > 1;
+  const sameWorkspace = agents.filter((a) => a.workspaceId === agent.workspaceId);
   let main = agent.name || agent.workspace;
-  if (!agent.name && sameWorkspace) main = `${agent.workspace} ${agent.tab || agent.paneId.split(':').pop()}`;
+  if (!agent.name && sameWorkspace.length > 1) {
+    const pane = /:p(\d+)$/.exec(agent.paneId)?.[1] ?? String(sameWorkspace.indexOf(agent) + 1);
+    main = `${agent.workspace} ${pane}`;
+  }
   const sub = agent.task || agent.project || agent.kind;
   return { main, sub };
 }
