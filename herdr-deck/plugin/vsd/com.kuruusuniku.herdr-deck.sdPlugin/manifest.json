@@ -1,0 +1,43 @@
+{
+  "Name": "herdr deck",
+  "Version": "0.1.0",
+  "Author": "kuruusuniku",
+  "Description": "herdr のタブごとに AI コーディングエージェントの状態(作業中・確認待ち・完了)をボタンの色とドット絵で表示し、押すとそのタブへ移動します。完了・確認待ちはずんだもん(VOICEVOX)が読み上げます。",
+  "Category": "herdr deck",
+  "CategoryIcon": "imgs/plugin/category.png",
+  "Icon": "imgs/plugin/icon.png",
+  "URL": "https://github.com/kuruusuniku/PublicSkills",
+  "CodePath": "bin/plugin.js",
+  "CodePathMac": "bin/plugin.js",
+  "CodePathWin": "bin/plugin.js",
+  "SDKVersion": 1,
+  "Software": {
+    "MinimumVersion": "3.10.188.226"
+  },
+  "OS": [
+    { "Platform": "mac", "MinimumVersion": "11" },
+    { "Platform": "windows", "MinimumVersion": "10" }
+  ],
+  "Nodejs": {
+    "Version": "20"
+  },
+  "Actions": [
+    {
+      "Name": "herdr タブ",
+      "UUID": "com.kuruusuniku.herdr-deck.tab",
+      "Icon": "imgs/actions/tab/icon.png",
+      "Tooltip": "herdr のタブの状態を表示。押すとそのタブへ、長押しでずんだもんが状況を読み上げ",
+      "PropertyInspectorPath": "ui/herdr-tab.html",
+      "Controllers": ["Keypad"],
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "DisableAutomaticStates": true,
+      "States": [
+        {
+          "Image": "imgs/actions/tab/key.png",
+          "ShowTitle": false
+        }
+      ]
+    }
+  ]
+}

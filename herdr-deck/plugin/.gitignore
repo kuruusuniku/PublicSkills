@@ -4,3 +4,7 @@ dist/
 com.kuruusuniku.herdr-deck.sdPlugin/bin/
 com.kuruusuniku.herdr-deck.sdPlugin/imgs/
 com.kuruusuniku.herdr-deck.sdPlugin/logs/
+vsd/com.kuruusuniku.herdr-deck.sdPlugin/bin/
+vsd/com.kuruusuniku.herdr-deck.sdPlugin/imgs/
+vsd/com.kuruusuniku.herdr-deck.sdPlugin/ui/
+vsd/com.kuruusuniku.herdr-deck.sdPlugin/log/

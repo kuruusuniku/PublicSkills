@@ -23,11 +23,13 @@
     "check": "npm run typecheck && npm test && npm run build && npm run validate"
   },
   "dependencies": {
-    "@elgato/streamdeck": "3.0.1"
+    "@elgato/streamdeck": "3.0.1",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@elgato/cli": "1.10.1",
     "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.2",
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
   }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { inflateSync } from "node:zlib";
 import { describe, it } from "node:test";
-import { escapeXml, fitText, renderKeySvg, svgDataUrl } from "../src/core/render.ts";
+import { escapeXml, fitText, renderKeyImage, renderKeySvg, svgDataUrl } from "../src/core/render.ts";
 import { renderIconPng } from "../src/core/png.ts";
 import type { SpriteState } from "../src/core/sprite.ts";
 import { CANVAS_H, CANVAS_W, characterGrid, ICONS, PALETTE, spriteFrame } from "../src/core/sprite.ts";
@@ -72,10 +72,10 @@ describe("renderKeySvg", () => {
     const svg = renderKeySvg({ view: view({ state: "blocked" }), frame: 0 });
     assert.match(svg, /^<svg [^>]*width="144" height="144"/);
     assert.match(svg, />確認待ち<\/text>/);
-    assert.match(svg, /fill="#dc2626"/);
+    assert.match(svg, /fill="rgb\(220,38,38\)"/);
     assert.ok(svg.endsWith("</svg>"));
     // 確認待ちは背景が点滅する
-    assert.match(renderKeySvg({ view: view({ state: "blocked" }), frame: 2 }), /fill="#9f1239"/);
+    assert.match(renderKeySvg({ view: view({ state: "blocked" }), frame: 2 }), /fill="rgb\(159,18,57\)"/);
   });
 
   it("ラベルは XML エスケープされ、長ければ … で切る", () => {
@@ -89,12 +89,24 @@ describe("renderKeySvg", () => {
 
   it("未接続・空きボタン", () => {
     assert.match(renderKeySvg({ view: null, offline: true, frame: 0 }), /未接続/);
-    assert.match(renderKeySvg({ view: null, slot: 5, frame: 0 }), />#5<\/text>/);
+    assert.match(renderKeySvg({ view: null, slot: 5, frame: 0 }), />5番<\/text>/);
   });
 
-  it("data URL", () => {
+  it("data URL (Stream Deck 向け base64 / VSD 向け生 SVG)", () => {
     const url = svgDataUrl("<svg/>");
     assert.equal(url, `data:image/svg+xml;base64,${Buffer.from("<svg/>").toString("base64")}`);
+    // 色に # を使わない (どの状態・どのフレームでも)
+    for (const state of ["working", "blocked", "done", "idle", "unknown", "none"] as const) {
+      for (let f = 0; f < 4; f++) assert.ok(!renderKeySvg({ view: view({ state }), frame: f }).includes("#"), `${state}/${f}`);
+    }
+    assert.ok(!renderKeySvg({ view: null, offline: true, frame: 0 }).includes("#"));
+    assert.ok(!renderKeySvg({ view: null, slot: 3, frame: 0 }).includes("#"));
+    // ラベルの # や % は全角にして、URL を壊さない
+    const raw = renderKeyImage({ view: view({ workspaceLabel: "api#1 100%" }), frame: 1 }, "svg-raw");
+    assert.ok(raw.startsWith("data:image/svg+xml;charset=utf8,<svg "));
+    assert.ok(!raw.includes("#") && !raw.includes("%"));
+    assert.match(raw, /api＃1 100％/);
+    assert.ok(renderKeyImage({ view: view(), frame: 0 }, "svg-base64").startsWith("data:image/svg+xml;base64,"));
   });
 });
 

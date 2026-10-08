@@ -7,6 +7,7 @@
 | skill | 概要 |
 |---|---|
 | [run-slack-html](run-slack-html/) | Slackモバイルアプリで快適に閲覧できる、単一ファイルの自己完結HTML(記事・議事録・資料)を作る |
+| [herdr-deck](herdr-deck/) | herdr で動かしている Claude Code の状態を VSD (Stream Dock) / Stream Deck のボタンに表示し、完了をずんだもんが読み上げる |
 
 ## インストール
 
@@ -85,6 +86,41 @@ bash run-slack-html/scripts/verify.sh path/to/your-file-slack-mobile.html
 | Chrome / Chromium | SVGのラスタライズ | `rsvg-convert` でも可。どちらも無いと図版を作れない |
 | ImageMagick (`magick`) | JPEG変換 | 無い場合はPNGで出力(ファイルサイズは大きくなる) |
 | codex CLI | AI画像生成 | 無くてもSVGエンジンで動く |
+
+---
+
+## herdr-deck
+
+[herdr](https://herdr.dev) で並列に動かしている Claude Code などのエージェントを、手元のボタンデバイスで見張るための skill です。
+着想は [SIOS Tech Lab の記事](https://tech-lab.sios.jp/archives/54936) で、元記事のソースは非公開なので独自に実装しています。
+
+- ボタンの色とドット絵のキャラで **作業中(青) / 確認待ち(赤・点滅) / 完了(緑・ジャンプ) / 待機(灰)** が一目で分かる
+- 短押しでそのタブへ移動、長押しで「いまどうなってる？」をずんだもんが読み上げ
+- 完了・確認待ちになると、画面をローカル LLM (Ollama など) が要約し、VOICEVOX のずんだもんが読み上げる
+
+### 対応デバイス
+
+| デバイス | 状態 |
+|---|---|
+| VSD Craft (VSDinside / MiraBox の Stream Dock) | 対応 (実機での確認待ち) |
+| Elgato Stream Deck (7.1 以上) | 対応 |
+| デバイスなし | `herdr-deck watch` で監視と読み上げだけ使える |
+
+### 使い方
+
+```bash
+cp -r /tmp/PublicSkills/herdr-deck ~/.claude/skills/
+```
+
+ボタンデバイスをつないだ Mac 上の Claude Code で、次のように頼んでください。
+
+```
+/herdr-deck VSD Craft にセットアップして動作確認して
+```
+
+手で入れる場合は `herdr-deck/plugin` で `npm install && npm run build` のあと、
+VSD Craft なら `bash scripts/install-vsd.sh`、Stream Deck なら `npm run link` です。
+設定や困ったときの対処は [herdr-deck/SKILL.md](herdr-deck/SKILL.md) にまとめています。
 
 ## ライセンス
 

@@ -50,10 +50,21 @@ export function fitText(text: string, fontSize: number, maxWidth: number): strin
   return out + "…";
 }
 
+/**
+ * "#rrggbb" を "rgb(r,g,b)" にする。SVG を data URL にそのまま埋め込むとき (VSD Craft)、
+ * "#" が URL のフラグメントとして解釈されて途中で切れるのを避けるため、SVG 内では # を使わない。
+ */
+export function cssColor(color: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!m) return color;
+  const n = Number.parseInt(m[1], 16);
+  return `rgb(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255})`;
+}
+
 function textEl(text: string, y: number, size: number): string {
   return (
     `<text x="72" y="${y}" font-family="${FONT}" font-size="${size}" font-weight="700" text-anchor="middle" ` +
-    `fill="#ffffff" stroke="rgba(0,0,0,0.55)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">` +
+    `fill="rgb(255,255,255)" stroke="rgba(0,0,0,0.55)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">` +
     `${escapeXml(text)}</text>`
   );
 }
@@ -72,7 +83,7 @@ export function spriteRects(state: SpriteState, frame: number, cell: number, ox:
       }
       let run = 1;
       while (x + run < CANVAS_W && dots.get(`${x + run},${y}`) === color) run++;
-      parts.push(`<rect x="${ox + x * cell}" y="${oy + y * cell}" width="${run * cell}" height="${cell}" fill="${color}"/>`);
+      parts.push(`<rect x="${ox + x * cell}" y="${oy + y * cell}" width="${run * cell}" height="${cell}" fill="${cssColor(color)}"/>`);
       x += run;
     }
   }
@@ -107,7 +118,7 @@ export function renderKeySvg(input: KeyRenderInput): string {
     top = ["herdr"];
     bottom = "未接続";
   } else if (!view) {
-    top = [input.slot ? `#${input.slot}` : ""];
+    top = [input.slot ? `${input.slot}番` : ""];
     bottom = "空き";
   } else {
     top = view.multiTab ? [view.workspaceLabel, view.tabLabel] : [view.workspaceLabel];
@@ -121,7 +132,7 @@ export function renderKeySvg(input: KeyRenderInput): string {
 
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${KEY_SIZE}" height="${KEY_SIZE}" viewBox="0 0 ${KEY_SIZE} ${KEY_SIZE}">`,
-    `<rect width="${KEY_SIZE}" height="${KEY_SIZE}" fill="${bg}"/>`,
+    `<rect width="${KEY_SIZE}" height="${KEY_SIZE}" fill="${cssColor(bg)}"/>`,
     `<g shape-rendering="crispEdges">${spriteRects(state, input.frame, cell, ox, spriteTop)}</g>`,
     textEl(fitText(top[0], 18, 132), 22, 18),
   ];
@@ -134,4 +145,20 @@ export function renderKeySvg(input: KeyRenderInput): string {
 
 export function svgDataUrl(svg: string): string {
   return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
+}
+
+/**
+ * SVG を data URL にそのまま埋め込む (VSD Craft の公式サンプルと同じ形)。
+ * 色は rgb() で書いているので、残る # や % はラベル文字だけ。全角に置き換えて URL を壊さないようにする。
+ */
+export function svgRawDataUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf8,${svg.replace(/#/g, "＃").replace(/%/g, "％")}`;
+}
+
+/** "svg-base64" = Stream Deck 向け / "svg-raw" = VSD Craft 向け */
+export type ImageFormat = "svg-base64" | "svg-raw";
+
+export function renderKeyImage(input: KeyRenderInput, format: ImageFormat): string {
+  const svg = renderKeySvg(input);
+  return format === "svg-raw" ? svgRawDataUrl(svg) : svgDataUrl(svg);
 }

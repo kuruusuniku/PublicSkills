@@ -1,13 +1,8 @@
+// Elgato Stream Deck 用のエントリ (公式 SDK を使う)。VSD Craft 用は vsd.ts。
 import streamDeck from "@elgato/streamdeck";
 import { HerdrTabAction } from "./actions/herdr-tab.ts";
-import { ConfigStore } from "./core/config.ts";
-import { augmentedPath, HerdrClient } from "./core/herdr.ts";
-import { HerdrMonitor } from "./core/monitor.ts";
-import { Narrator } from "./core/narrator.ts";
+import { startRuntime } from "./core/runtime.ts";
 import type { Logger } from "./core/types.ts";
-
-// Stream Deck から起動されると PATH が最小限なので、herdr や再生コマンドを見つけられるようにする
-process.env.PATH = augmentedPath();
 
 const sdLogger = streamDeck.logger.createScope("herdr-deck");
 const logger: Logger = {
@@ -17,27 +12,25 @@ const logger: Logger = {
   error: (...a) => sdLogger.error(a.map(String).join(" ")),
 };
 
-const config = new ConfigStore(undefined, logger);
-if (config.ensureFile()) logger.info(`設定ファイルを作成しました: ${config.path}`);
-const initial = config.get();
+const tabAction = new HerdrTabAction();
+const findKey = (id: string) => tabAction.actions.find((a) => a.id === id);
 
-const herdr = new HerdrClient({ bin: initial.herdr.path, session: initial.herdr.session, timeoutMs: initial.herdr.timeoutMs });
-const monitor = new HerdrMonitor(herdr, config, logger);
-const narrator = new Narrator({ config, herdr, logger });
-const tabAction = new HerdrTabAction({ config, herdr, monitor, narrator, logger });
-
-monitor.on("update", () => tabAction.render(false));
-monitor.on("offline", () => tabAction.render(false));
-monitor.on("narration", (ev) => narrator.enqueue(ev));
+const runtime = startRuntime({
+  logger,
+  defaultImageFormat: "svg-base64",
+  sink: {
+    setImage(id, image) {
+      const a = findKey(id);
+      if (a?.isKey()) a.setImage(image).catch((err: Error) => logger.debug(`setImage: ${err.message}`));
+    },
+    showAlert(id) {
+      const a = findKey(id);
+      if (a?.isKey()) a.showAlert().catch(() => {});
+    },
+  },
+});
+tabAction.controller = runtime.controller;
 
 streamDeck.actions.registerAction(tabAction);
 await streamDeck.connect();
-
-monitor.start();
-
-// アニメーション用のタイマー。frameMs は設定変更で変わりうるので毎回読む
-const tick = () => {
-  tabAction.tick();
-  setTimeout(tick, config.get().deck.frameMs);
-};
-setTimeout(tick, initial.deck.frameMs);
+runtime.start();

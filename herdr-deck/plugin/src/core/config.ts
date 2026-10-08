@@ -20,6 +20,11 @@ export interface DeckConfig {
     frameMs: number;
     /** ボタンを押したときに前面に出すアプリ名 (macOS: "WezTerm" "Ghostty" "iTerm" など)。null なら何もしない */
     activateApp: string | null;
+    /**
+     * ボタン画像の渡し方。"auto" = Stream Deck は svg-base64 / VSD Craft は svg-raw。
+     * VSD でボタンが真っ黒・空白のままなら、もう一方を試す
+     */
+    imageFormat: "auto" | "svg-base64" | "svg-raw";
   };
   voice: {
     enabled: boolean;
@@ -62,7 +67,7 @@ export interface DeckConfig {
 
 export const DEFAULT_CONFIG: DeckConfig = {
   herdr: { path: null, session: null, pollMs: 1200, timeoutMs: 5000 },
-  deck: { tabs: "all", animation: true, frameMs: 300, activateApp: null },
+  deck: { tabs: "all", animation: true, frameMs: 300, activateApp: null, imageFormat: "auto" },
   voice: {
     enabled: true,
     announce: ["done", "blocked"],
@@ -153,6 +158,10 @@ export function mergeConfig(user: unknown, logger: Logger = silentLogger): DeckC
   if (cfg.deck.tabs !== "all" && cfg.deck.tabs !== "agents") {
     warn("deck.tabs", '"all" か "agents"');
     cfg.deck.tabs = DEFAULT_CONFIG.deck.tabs;
+  }
+  if (!["auto", "svg-base64", "svg-raw"].includes(cfg.deck.imageFormat)) {
+    warn("deck.imageFormat", '"auto" / "svg-base64" / "svg-raw"');
+    cfg.deck.imageFormat = DEFAULT_CONFIG.deck.imageFormat;
   }
   cfg.voice.announce = cfg.voice.announce.filter((k): k is "done" | "blocked" => k === "done" || k === "blocked");
   cfg.herdr.pollMs = Math.max(300, cfg.herdr.pollMs);
