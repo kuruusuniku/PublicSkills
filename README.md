@@ -7,6 +7,7 @@
 | skill | 概要 |
 |---|---|
 | [run-slack-html](run-slack-html/) | Slackモバイルアプリで快適に閲覧できる、単一ファイルの自己完結HTML(記事・議事録・資料)を作る |
+| [reaper-compose](reaper-compose/) | REAPERで、ピアノで弾いたMIDIをもとにClaudeと相談しながら曲を作る(分析・アレンジ提案・MIDIの書き込み) |
 
 ## インストール
 
@@ -85,6 +86,91 @@ bash run-slack-html/scripts/verify.sh path/to/your-file-slack-mobile.html
 | Chrome / Chromium | SVGのラスタライズ | `rsvg-convert` でも可。どちらも無いと図版を作れない |
 | ImageMagick (`magick`) | JPEG変換 | 無い場合はPNGで出力(ファイルサイズは大きくなる) |
 | codex CLI | AI画像生成 | 無くてもSVGエンジンで動く |
+
+---
+
+## reaper-compose
+
+REAPER で、**自分が弾いた MIDI をもとに Claude と相談しながら曲を作る**ための skill です(macOS 向け)。
+
+### 何ができるか
+
+- REAPER のプロジェクトと MIDI を読み、調・コード進行・構成・旋律の特徴を分析して伝える
+  (コードはペダル・分数コード・経過音を考慮して推定し、Claude がノートを見て確かめる)
+- 音楽理論にもとづいて、リハーモナイズ・ベース・ドラム・パッド・対旋律などの案を理由つきで出す
+- 決まった案を REAPER の**新しいトラックに直接書き込み**、聴いてほしい小節から再生する
+- 曲ごとのノート(コンセプト、決めたこと、却下した案、次にやること)を残し、次の作業で続きから再開できる
+
+Claude は音を聴けないので、判断はノートと理論から行い、聴いた感想は言葉で伝えてもらう前提です。
+
+### 仕組み
+
+```
+Claude Code ──(reaper_ai.py)──▶ ~/ReaperAI/.bridge/inbox/*.json ──▶ ai_bridge.lua (REAPER に常駐)
+            ◀──────────────────  ~/ReaperAI/.bridge/outbox/*.json ◀──  ReaScript API で読み書き
+```
+
+- `reaper/ai_bridge.lua`: REAPER の中で動くブリッジ。書き込みは 1 回の Undo にまとまるので Cmd+Z で戻せる
+- `scripts/reaper_ai.py`: Claude が使う CLI(標準ライブラリのみ)。MIDI のテキスト表示、調・コード推定、.mid の読み書きも担う
+- ユーザーが弾いたテイクは書き換えず、AI の案は `Bass v1 (AI)` のような新しいトラックに書く
+
+### 必要なもの
+
+| もの | 備考 |
+|---|---|
+| macOS | Windows は未対応(パスの扱いを直せば動く設計) |
+| REAPER 7 | 60日間の試用あり |
+| Claude Code(デスクトップアプリか CLI) | REAPER と同じ Mac で動かす |
+| Python 3.9 以上 | 無ければ `xcode-select --install` |
+
+### インストール
+
+```bash
+git clone https://github.com/kuruusuniku/PublicSkills /tmp/PublicSkills
+bash /tmp/PublicSkills/reaper-compose/scripts/install.sh --autostart
+```
+
+`--autostart` を付けると、REAPER の起動時にブリッジが自動で立ち上がります。付けない場合は、
+REAPER で Actions → Show action list → New action → Load ReaScript... から
+`Scripts/ReaperAI/ai_bridge.lua` を読み込んで実行してください。
+
+そのあと Claude Code のデスクトップアプリで `~/ReaperAI` フォルダを開き、
+「REAPER とつながってるか確認して」と話しかけると始められます。
+
+### 使い方の例
+
+```
+いまREAPERで選択してる8小節、ピアノで弾いたAメロのアイデア。分析して、ここからどう広げられるか相談したい
+このコード進行で、もう少し切ない感じのリハモ案を2つ出して
+ベースとドラムを入れてみて。テンポ感は落ち着いたシティポップ寄りで
+5〜8小節のベース、歌とぶつかってる気がする
+```
+
+### REAPER でピアノを録音するまで(Cubase から来た人向けの最小手順)
+
+1. Preferences → Audio → Device でオーディオインターフェースを選ぶ。MIDI Devices で鍵盤の入力を Enable にする
+2. Cmd+T でトラックを作り、FX ボタンからピアノ音源(VSTi / AUi)を挿す
+3. トラックの録音ボタンを押して入力を「Input: MIDI → 鍵盤 → All channels」にし、モニターを ON
+4. 録音して、できたアイテムをクリックで選択 → Claude に「選択中のアイテムを読んで」
+
+用語の対応: Cubase の「イベント/パート」は REAPER の「アイテム」、インストゥルメントトラックは「音源を挿した普通のトラック」です。
+音名は REAPER が C4=60、Cubase が C3=60 で 1 オクターブ表記がずれます。
+
+### テスト
+
+```bash
+bash reaper-compose/tests/run-tests.sh
+```
+
+REAPER の API を引数と戻り値の型まで真似たモック上でブリッジを動かし、CLI からの通しの操作
+(読み込み・書き込み・拍子の変わる箇所・エラー処理・常駐ループ)を確かめます。
+
+### 動作確認の状況
+
+- 上のテストはすべて通っていますが、**実機の REAPER ではまだ動かしていません**
+  (関数の仕様は REAPER 公式 SDK のヘッダーで確認して実装)
+- 初回に Claude が `selftest` で小節/拍の変換が REAPER と一致するかを確かめます。
+  不具合があれば Claude Code のセッション内でブリッジを直せるようにしてあります
 
 ## ライセンス
 
